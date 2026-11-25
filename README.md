@@ -41,9 +41,15 @@ Until those secrets are set the app works normally, just without notifications.
 
 ### Sharing it through TestFlight
 
-1. In Xcode choose **Product > Archive**, then **Distribute App > TestFlight & App Store**.
-2. In App Store Connect, open the app's **TestFlight** tab and add the other parent as a tester with their Apple ID email.
-3. Both parents install the app from the TestFlight app. The first one adds the pet and sends the invite code; the second one joins with it.
+The **TestFlight** workflow (`.github/workflows/testflight.yml`) builds the app for iPhone and uploads it, so no Mac is needed. It is started by hand from the repository's **Actions** tab. It needs a one-time setup:
+
+1. **Register the app's identifier.** On developer.apple.com open **Certificates, Identifiers & Profiles > Identifiers**, add an **App ID** with the bundle ID `com.bilgaaaaa.brunello` and tick **Push Notifications**.
+2. **Create the app.** On appstoreconnect.apple.com open **Apps**, add a **New App** for iOS and choose that bundle ID. The name must be unique on the App Store; the name on the phone stays "Brunello".
+3. **Create an API key.** In App Store Connect open **Users and Access > Integrations > App Store Connect API**, generate a team key with **Admin** access and download the `.p8` file. Note the **Key ID** and the **Issuer ID**.
+4. **Add four secrets** in the GitHub repository under **Settings > Secrets and variables > Actions**: `APP_STORE_CONNECT_KEY_ID`, `APP_STORE_CONNECT_ISSUER_ID`, `APP_STORE_CONNECT_PRIVATE_KEY` (the full text of the `.p8` file) and `APPLE_TEAM_ID` (the ten characters under **Membership details** on developer.apple.com).
+5. **Run the workflow.** A few minutes after it finishes, the build appears in the app's **TestFlight** tab in App Store Connect. Add yourself and the other parent as testers there, then install it from the TestFlight app on the iPhone.
+
+The first parent to open the app adds the pet and sends the invite code; the second one joins with it.
 
 ### Using your own Supabase project
 
