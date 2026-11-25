@@ -13,6 +13,7 @@ There is no chat, on purpose. The app only carries the pet's updates.
 | `supabase/migrations/` | The database: tables, access rules, invite codes, expenses |
 | `supabase/functions/notify-parent/` | The server function that sends the push notification |
 | `simulation/` | A clickable two-phone demo of the app that runs in a browser |
+| `tests/` | Backend checks that run on Linux with Docker |
 
 ## How the app works
 
@@ -30,7 +31,7 @@ You need a Mac with Xcode 16.3 or newer.
 
 1. Create a Supabase project and run `supabase/migrations/20261125000000_brunello_schema.sql` in its SQL editor.
 2. In Supabase, open **Authentication > Sign In / Providers** and turn on **Allow anonymous sign-ins**. The app signs each phone in silently; access is controlled by the invite code.
-3. Deploy the function in `supabase/functions/notify-parent/`.
+3. Deploy the function in `supabase/functions/notify-parent/` with JWT verification turned off (`supabase functions deploy notify-parent --no-verify-jwt`). The function checks the caller's session itself.
 4. Paste your project URL and anon key into `Brunello/App/AppConfig.swift`.
 5. Open `Brunello.xcodeproj`, pick an iPhone simulator and press Run.
 
@@ -61,3 +62,8 @@ The app, the database, the server function and the simulation use the same words
 | `category` | `food`, `vet`, `medicine`, `grooming`, `toys`, `other`, or `settle_up` for paying the other parent back |
 
 The pet's sentences live in two places that must stay in step: `Brunello/Models/EntryKind.swift` (diary) and `supabase/functions/notify-parent/petVoice.ts` (notifications, including the ones about money).
+
+## Checks
+
+- **iOS build** (`.github/workflows/ios-build.yml`) compiles the app with Xcode on every change.
+- **Backend checks** (`.github/workflows/backend-checks.yml`) run `tests/run.sh`: the database access rules are tried by three people (two parents and a stranger), then the app's real data code runs end to end against a local stand-in for Supabase, including the notification function with a fake Apple server.

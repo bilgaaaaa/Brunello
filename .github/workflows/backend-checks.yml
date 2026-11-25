@@ -1,0 +1,27 @@
+name: Backend checks
+
+# Tests the database access rules and the app's data layer end to end on Linux.
+on:
+  push:
+    paths:
+      - "supabase/**"
+      - "tests/**"
+      - "Brunello/Models/**"
+      - "Brunello/Services/DiaryService.swift"
+      - "Brunello/App/AppConfig.swift"
+      - ".github/workflows/backend-checks.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: backend-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Run the backend checks
+        run: ./tests/run.sh

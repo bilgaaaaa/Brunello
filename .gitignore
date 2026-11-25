@@ -12,3 +12,9 @@ build.log
 # Supabase CLI
 supabase/.temp/
 supabase/.branches/
+
+# Backend checks: generated copies and build output
+tests/data-layer/.build/
+tests/data-layer/Package.resolved
+tests/data-layer/Sources/DataLayerCheck/App_*.swift
+tests/**/output.log

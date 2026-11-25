@@ -14,6 +14,8 @@ final class AppState {
     }
 
     private(set) var phase: Phase = .loading
+    /// The technical reason the last start failed, shown in small print to help with setup problems.
+    private(set) var startErrorDetail: String?
     private(set) var family: Family?
     private(set) var entries: [Entry] = []
     private(set) var expenses: [Expense] = []
@@ -35,11 +37,13 @@ final class AppState {
             return
         }
         phase = .loading
+        startErrorDetail = nil
         do {
             userID = try await service.signIn()
             try await loadFamily()
         } catch {
             Logger.app.error("Start failed: \(error.localizedDescription, privacy: .public)")
+            startErrorDetail = error.localizedDescription
             phase = .failed
         }
     }

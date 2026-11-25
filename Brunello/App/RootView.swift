@@ -9,21 +9,19 @@ struct RootView: View {
         Group {
             switch appState.phase {
             case .loading:
-                StatusScreen(emoji: "🐾", title: "Fetching the diary", message: nil, isLoading: true, action: nil)
+                StatusScreen(emoji: "🐾", title: "Fetching the diary", isLoading: true)
             case .setupNeeded:
                 StatusScreen(
                     emoji: "🛠️",
                     title: "One step left",
-                    message: "Add your Supabase URL and key in AppConfig.swift, then run the app again.",
-                    isLoading: false,
-                    action: nil
+                    message: "Add your Supabase URL and key in AppConfig.swift, then run the app again."
                 )
             case .failed:
                 StatusScreen(
                     emoji: "📡",
                     title: "Can't reach the diary",
                     message: "Check your internet connection and try again.",
-                    isLoading: false,
+                    detail: appState.startErrorDetail,
                     action: { Task { await appState.start() } }
                 )
             case .onboarding:
@@ -68,9 +66,10 @@ struct MainTabView: View {
 struct StatusScreen: View {
     let emoji: String
     let title: String
-    let message: String?
-    let isLoading: Bool
-    let action: (() -> Void)?
+    var message: String?
+    var detail: String?
+    var isLoading = false
+    var action: (() -> Void)?
 
     var body: some View {
         VStack(spacing: 14) {
@@ -84,6 +83,9 @@ struct StatusScreen: View {
             }
             if let action {
                 Button("Try again", action: action).buttonStyle(PrimaryButtonStyle())
+            }
+            if let detail {
+                Text(detail).font(.caption).foregroundStyle(Theme.inkSoft).multilineTextAlignment(.center)
             }
         }
         .padding(32)
