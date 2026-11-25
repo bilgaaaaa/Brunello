@@ -8,13 +8,14 @@ struct FamilyView: View {
 
     @State private var petName = ""
     @State private var species = Species.dog
+    @State private var currencyCode = Money.fallbackCurrencyCode
     @State private var name = ""
     @State private var nickname = ""
     @State private var isChoosingPetPhoto = false
     @State private var notificationStatus = UNAuthorizationStatus.notDetermined
 
     private var isPetChanged: Bool {
-        NameRules.clean(petName) != family.pet.name || species != family.pet.species
+        NameRules.clean(petName) != family.pet.name || species != family.pet.species || currencyCode != family.pet.currencyCode
     }
 
     private var isMeChanged: Bool {
@@ -81,9 +82,21 @@ struct FamilyView: View {
                 }
             }
             .pickerStyle(.segmented)
+            HStack {
+                Text("Currency for expenses")
+                    .font(.subheadline)
+                    .foregroundStyle(Theme.inkSoft)
+                Spacer(minLength: 8)
+                Picker("Currency for expenses", selection: $currencyCode) {
+                    ForEach(Money.currencyChoices(including: family.pet.currencyCode), id: \.self) { code in
+                        Text(code).tag(code)
+                    }
+                }
+                .pickerStyle(.menu)
+            }
             if isPetChanged {
                 Button("Save") {
-                    Task { await appState.updatePet(name: petName, species: species) }
+                    Task { await appState.updatePet(name: petName, species: species, currencyCode: currencyCode) }
                 }
                 .buttonStyle(PrimaryButtonStyle())
                 .disabled(!NameRules.isValidPetName(petName))
@@ -217,6 +230,7 @@ struct FamilyView: View {
     private func loadFields() {
         petName = family.pet.name
         species = family.pet.species
+        currencyCode = family.pet.currencyCode
         name = family.me.name
         nickname = family.me.nickname
     }

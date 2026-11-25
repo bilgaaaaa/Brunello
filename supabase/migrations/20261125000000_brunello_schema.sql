@@ -1,4 +1,4 @@
--- Brunello: one pet, two parents, a shared diary of entries and photos.
+-- Brunello: one pet, two parents, a shared diary of entries and photos, and the pet's shared expenses.
 -- Everything is locked with row level security so only the pet's parents can read or write.
 
 -- ---------- Tables ----------
@@ -8,6 +8,7 @@ create table public.pets (
   name text not null check (char_length(name) between 1 and 20),
   species text not null check (species in ('dog', 'cat')),
   photo_path text,
+  currency_code text not null default 'EUR' check (currency_code ~ '^[A-Z]{3}$'),
   invite_code text not null unique,
   created_at timestamptz not null default now()
 );
@@ -50,6 +51,23 @@ create table public.entries (
 create index entries_pet_id_occurred_at_idx on public.entries (pet_id, occurred_at desc);
 create index entries_parent_id_idx on public.entries (parent_id);
 create index parents_user_id_idx on public.parents (user_id);
+
+-- Money spent on the pet. Every expense is shared half and half between the two parents;
+-- a "settle_up" row is one parent paying the other back.
+create table public.expenses (
+  id uuid primary key default gen_random_uuid(),
+  pet_id uuid not null references public.pets (id) on delete cascade,
+  parent_id uuid not null,
+  category text not null check (category in ('food', 'vet', 'medicine', 'grooming', 'toys', 'other', 'settle_up')),
+  amount_cents integer not null check (amount_cents between 1 and 10000000),
+  spent_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
+  -- The payer must be a parent of this same pet.
+  foreign key (parent_id, pet_id) references public.parents (id, pet_id) on delete cascade
+);
+
+create index expenses_pet_id_spent_at_idx on public.expenses (pet_id, spent_at desc);
+create index expenses_parent_id_idx on public.expenses (parent_id);
 
 -- Push notification addresses, one row per phone.
 create table public.device_tokens (
@@ -101,7 +119,7 @@ $$;
 -- ---------- Actions the app calls ----------
 
 -- Creates the pet and makes the caller its first parent.
-create function public.create_pet(pet_name text, pet_species text, parent_name text, parent_nickname text)
+create function public.create_pet(pet_name text, pet_species text, pet_currency_code text, parent_name text, parent_nickname text)
 returns public.pets
 language plpgsql
 security definer
@@ -118,8 +136,8 @@ begin
     raise exception 'already_in_family';
   end if;
 
-  insert into public.pets (name, species, invite_code)
-    values (btrim(pet_name), pet_species, public.generate_invite_code())
+  insert into public.pets (name, species, currency_code, invite_code)
+    values (btrim(pet_name), pet_species, upper(pet_currency_code), public.generate_invite_code())
     returning * into new_pet;
   insert into public.parents (pet_id, user_id, name, nickname)
     values (new_pet.id, current_user_id, btrim(parent_name), btrim(parent_nickname));
@@ -187,21 +205,22 @@ $$;
 alter table public.pets enable row level security;
 alter table public.parents enable row level security;
 alter table public.entries enable row level security;
+alter table public.expenses enable row level security;
 alter table public.device_tokens enable row level security;
 
-revoke all on public.pets, public.parents, public.entries, public.device_tokens from anon, authenticated;
-grant select on public.pets, public.parents, public.entries to authenticated;
-grant update (name, species, photo_path) on public.pets to authenticated;
+revoke all on public.pets, public.parents, public.entries, public.expenses, public.device_tokens from anon, authenticated;
+grant select on public.pets, public.parents, public.entries, public.expenses to authenticated;
+grant update (name, species, photo_path, currency_code) on public.pets to authenticated;
 grant update (name, nickname) on public.parents to authenticated;
-grant insert, delete on public.entries to authenticated;
+grant insert, delete on public.entries, public.expenses to authenticated;
 
 revoke execute on function public.is_parent_of(uuid) from public, anon;
 revoke execute on function public.generate_invite_code() from public, anon, authenticated;
-revoke execute on function public.create_pet(text, text, text, text) from public, anon;
+revoke execute on function public.create_pet(text, text, text, text, text) from public, anon;
 revoke execute on function public.join_pet(text, text, text) from public, anon;
 revoke execute on function public.save_device_token(text, text) from public, anon;
 grant execute on function public.is_parent_of(uuid) to authenticated;
-grant execute on function public.create_pet(text, text, text, text) to authenticated;
+grant execute on function public.create_pet(text, text, text, text, text) to authenticated;
 grant execute on function public.join_pet(text, text, text) to authenticated;
 grant execute on function public.save_device_token(text, text) to authenticated;
 
@@ -232,9 +251,26 @@ create policy "Parents can delete their own entries" on public.entries
     )
   );
 
+create policy "Parents can read the expenses" on public.expenses
+  for select to authenticated using (public.is_parent_of(pet_id));
+create policy "Parents can add what they paid" on public.expenses
+  for insert to authenticated with check (
+    exists (
+      select 1 from public.parents
+      where parents.id = expenses.parent_id and parents.pet_id = expenses.pet_id and parents.user_id = (select auth.uid())
+    )
+  );
+create policy "Parents can delete what they added" on public.expenses
+  for delete to authenticated using (
+    exists (
+      select 1 from public.parents
+      where parents.id = expenses.parent_id and parents.user_id = (select auth.uid())
+    )
+  );
+
 -- ---------- Live updates ----------
 
-alter publication supabase_realtime add table public.entries, public.parents, public.pets;
+alter publication supabase_realtime add table public.entries, public.expenses, public.parents, public.pets;
 
 -- ---------- Photos ----------
 -- Private bucket; every file lives in a folder named after the pet's id.

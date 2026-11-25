@@ -46,6 +46,29 @@ export function voiceLine(kind: string, detail: string | null): string | null {
   return VOICE_LINES[kind]?.[detail ?? ""] ?? null;
 }
 
+// What the pet says when a parent spends money on it, by expense category.
+// Keep the categories in step with ExpenseCategory in the iOS app (Brunello/Models/Expense.swift).
+const EXPENSE_VOICE_LINES: Record<string, (payerName: string, amount: string) => string> = {
+  food: (payerName, amount) => `${payerName} bought my food (${amount}) 🍖`,
+  vet: (payerName, amount) => `${payerName} paid the vet for me (${amount}) 🩺`,
+  medicine: (payerName, amount) => `${payerName} bought my medicine (${amount}) 💊`,
+  grooming: (payerName, amount) => `${payerName} paid for my grooming (${amount}) ✂️`,
+  toys: (payerName, amount) => `${payerName} bought me toys (${amount}) 🧸`,
+  other: (payerName, amount) => `${payerName} bought something for me (${amount}) 🛍️`,
+  settle_up: (payerName, amount) => `${payerName} paid you back ${amount} 🤝`,
+};
+
+/** Money as people read it, for example "€25.00". */
+export function formatAmount(amountCents: number, currencyCode: string): string {
+  return new Intl.NumberFormat("en", { style: "currency", currency: currencyCode }).format(amountCents / 100);
+}
+
+/** The sentence the pet says about an expense, or null when the category is unknown. */
+export function expenseVoiceLine(category: string, payerName: string, amountCents: number, currencyCode: string): string | null {
+  const line = EXPENSE_VOICE_LINES[category];
+  return line ? line(payerName, formatAmount(amountCents, currencyCode)) : null;
+}
+
 /** Notification title, for example "Bruno 🐶". */
 export function notificationTitle(petName: string, species: string): string {
   return `${petName} ${SPECIES_EMOJI[species] ?? "🐾"}`;

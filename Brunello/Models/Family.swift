@@ -16,4 +16,15 @@ struct Family: Equatable, Sendable {
     func isMine(_ entry: Entry) -> Bool {
         entry.parentID == me.id
     }
+
+    /// "you" for what I paid, otherwise the other parent's name.
+    func payerLabel(for expense: Expense) -> String {
+        if expense.parentID == me.id { return "you" }
+        if let otherParent, otherParent.id == expense.parentID { return otherParent.name }
+        return "a parent"
+    }
+
+    func isMine(_ expense: Expense) -> Bool {
+        expense.parentID == me.id
+    }
 }

@@ -91,7 +91,7 @@
   .screen { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; padding: 6px 16px 18px; display: flex; flex-direction: column; gap: 14px; }
   .screen::-webkit-scrollbar { display: none; }
 
-  .tabbar { flex: none; display: grid; grid-template-columns: repeat(3, 1fr); padding: 6px 14px 22px; background: var(--card); border-top: 1px solid var(--line); position: relative; }
+  .tabbar { flex: none; display: grid; grid-template-columns: repeat(4, 1fr); padding: 6px 14px 22px; background: var(--card); border-top: 1px solid var(--line); position: relative; }
   .tabbar::after { content: ""; position: absolute; bottom: 7px; left: 50%; transform: translateX(-50%); width: 108px; height: 4px; border-radius: 4px; background: var(--ink); opacity: .8; }
   .tab { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 10.5px; font-weight: 800; color: var(--ink-soft); padding: 4px 0; border-radius: 12px; position: relative; }
   .tab svg { width: 24px; height: 24px; fill: currentColor; }
@@ -142,6 +142,23 @@
   .photo-grid button { border-radius: 18px; overflow: hidden; aspect-ratio: 1; position: relative; }
   .photo-grid img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .photo-grid span { position: absolute; left: 6px; bottom: 6px; background: var(--scrim); color: #fff; font-size: 10.5px; font-weight: 800; padding: 2px 8px; border-radius: 999px; }
+
+  /* ---------- Money ---------- */
+  .balance { background: var(--card); border-radius: 20px; padding: 16px 14px; display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; }
+  .balance .e { font-size: 30px; line-height: 1.1; }
+  .balance .who { margin: 0; font-size: 13px; color: var(--ink-soft); }
+  .balance .amount { margin: 0; font-family: var(--font-display); font-weight: 700; font-size: 34px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .balance .btn-primary { margin-top: 8px; }
+  .money-row { display: flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 700; }
+  .money-row .grow { flex: 1; min-width: 0; }
+  .money-row .sum { font-variant-numeric: tabular-nums; }
+  .money-row.total { border-top: 1px solid var(--line); padding-top: 9px; font-weight: 800; font-size: 14.5px; }
+  .entry .sum { flex: none; font-weight: 800; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+  .amount-field { display: flex; align-items: baseline; gap: 8px; background: var(--app-bg); border-radius: 18px; padding: 6px 14px; }
+  .amount-field input { flex: 1; min-width: 0; border: 0; background: none; text-align: right; font-family: var(--font-display); font-weight: 700; font-size: 34px; padding: 0; }
+  .amount-field input:focus { outline: none; }
+  .amount-field span { font-weight: 800; color: var(--ink-soft); }
+  .kind[aria-pressed="true"] { box-shadow: inset 0 0 0 3px var(--brand); }
 
   /* ---------- Family ---------- */
   .card { background: var(--card); border-radius: 20px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
@@ -247,9 +264,9 @@
   </div>
 
   <ol class="steps">
-    <li><div><b>Tap what happened</b><span>Food, poo, pee, a walk, a health note or a photo. Two taps, no typing.</span></div></li>
+    <li><div><b>Tap what happened</b><span>Food, poo, pee, a walk, a health note, a photo or an expense. No messages to type.</span></div></li>
     <li><div><b>The other parent is told</b><span>A notification arrives in the pet's voice, addressed to them by name.</span></div></li>
-    <li><div><b>The day stays on record</b><span>Both phones show the same diary and photo album, day by day.</span></div></li>
+    <li><div><b>Everything stays on record</b><span>Both phones share the diary, the photo album and what was spent, with who owes whom.</span></div></li>
   </ol>
 </main>
 
@@ -294,6 +311,19 @@
     dog: { emoji: '🐶', body: '🐕', label: 'Dog', kinds: ['food', 'poo', 'pee', 'walk', 'health', 'photo'] },
     cat: { emoji: '🐱', body: '🐈', label: 'Cat', kinds: ['food', 'poo', 'pee', 'play', 'health', 'photo'] },
   };
+  // Expense categories and what the pet says about them; "settle_up" is one parent paying the other back.
+  const EXPENSE_CATEGORIES = {
+    food: { emoji: '🍖', label: 'Food', voiceLine: (payerName, amount) => `${payerName} bought my food (${amount}) 🍖` },
+    vet: { emoji: '🩺', label: 'Vet', voiceLine: (payerName, amount) => `${payerName} paid the vet for me (${amount}) 🩺` },
+    medicine: { emoji: '💊', label: 'Medicine', voiceLine: (payerName, amount) => `${payerName} bought my medicine (${amount}) 💊` },
+    grooming: { emoji: '✂️', label: 'Grooming', voiceLine: (payerName, amount) => `${payerName} paid for my grooming (${amount}) ✂️` },
+    toys: { emoji: '🧸', label: 'Toys', voiceLine: (payerName, amount) => `${payerName} bought me toys (${amount}) 🧸` },
+    other: { emoji: '🛍️', label: 'Other', voiceLine: (payerName, amount) => `${payerName} bought something for me (${amount}) 🛍️` },
+    settle_up: { emoji: '🤝', label: 'Paid back', voiceLine: (payerName, amount) => `${payerName} paid you back ${amount} 🤝` },
+  };
+  const SPENDING_CATEGORIES = ['food', 'vet', 'medicine', 'grooming', 'toys', 'other'];
+  const CURRENCY_CODE = 'EUR';
+  const MAX_AMOUNT_CENTS = 10000000;
   const SUMMARY_KIND_COUNT = 4;
   const NICKNAME_IDEAS = ['Mama', 'Mommy', 'Papà', 'Daddy'];
   const PHOTO_SCENES = [
@@ -308,7 +338,7 @@
   const narrowScreen = window.matchMedia('(max-width: 759px)');
 
   // ---------- State: "store" is the shared cloud data, "phones" is each phone's own UI state ----------
-  let store, phones, activePhoneId = 'p1', nextEntryId = 1;
+  let store, phones, activePhoneId = 'p1', nextEntryId = 1, nextExpenseId = 1;
 
   const otherPhoneId = phoneId => (phoneId === 'p1' ? 'p2' : 'p1');
   const esc = text => String(text).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
@@ -325,6 +355,39 @@
   const diaryMessage = entry => capitalize(voiceLine(entry));
   const notificationBody = (entry, receiver) => `${receiver.nickname}, ${voiceLine(entry)}`;
 
+  // ---------- Money: amounts are whole cents; every expense is shared half and half ----------
+  const formatAmount = cents => new Intl.NumberFormat('en', { style: 'currency', currency: CURRENCY_CODE }).format(cents / 100);
+
+  // Reads what the person typed ("12", "12.5", "12,50") as cents; null when it is not a usable amount.
+  function centsFromText(text) {
+    const normalized = text.trim().replace(',', '.');
+    if (!/^\d+(\.\d{0,2})?$/.test(normalized)) return null;
+    const [whole, fraction = ''] = normalized.split('.');
+    const cents = Number(whole) * 100 + Number(fraction.padEnd(2, '0'));
+    return cents >= 1 && cents <= MAX_AMOUNT_CENTS ? cents : null;
+  }
+
+  // Positive: the other parent owes this parent. Negative: this parent owes them.
+  function balanceCents(parentId) {
+    let doubledBalance = 0;
+    store.expenses.forEach(expense => {
+      const sign = expense.parentId === parentId ? 1 : -1;
+      const weight = expense.category === 'settle_up' ? 2 : 1;
+      doubledBalance += sign * weight * expense.amountCents;
+    });
+    return Math.trunc(doubledBalance / 2);
+  }
+
+  // This month's spending by category, largest first; paybacks are not spending.
+  function monthSpending() {
+    const now = new Date(), totals = {};
+    store.expenses.forEach(expense => {
+      const sameMonth = expense.spentAt.getFullYear() === now.getFullYear() && expense.spentAt.getMonth() === now.getMonth();
+      if (expense.category !== 'settle_up' && sameMonth) totals[expense.category] = (totals[expense.category] || 0) + expense.amountCents;
+    });
+    return Object.entries(totals).map(([category, amountCents]) => ({ category, amountCents })).sort((a, b) => b.amountCents - a.amountCents);
+  }
+
   function scenePhoto(scene, species) {
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${scene.from}"/><stop offset="1" stop-color="${scene.to}"/></linearGradient></defs><rect width="300" height="300" fill="url(#g)"/><text x="140" y="150" font-size="130" text-anchor="middle" dominant-baseline="central">${SPECIES[species].body}</text><text x="236" y="236" font-size="58" text-anchor="middle" dominant-baseline="central">${scene.prop}</text></svg>`;
     return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
@@ -336,12 +399,13 @@
   }
 
   function makePhone() {
-    return { tab: 'today', dayOffset: 0, sheet: null, viewerEntryId: null, onboarding: null, unread: false, highlightEntryId: null, bannerEntryId: null, bannerTimer: null, toastTimer: null };
+    return { tab: 'today', dayOffset: 0, sheet: null, expenseDraft: null, viewerEntryId: null, onboarding: null, unread: false, highlightEntryId: null, highlightExpenseId: null, bannerEntryId: null, bannerTab: 'today', bannerTimer: null, toastTimer: null };
   }
 
   // Filled demo: both parents joined and Bruno already had a busy day.
   function seedDemo() {
     nextEntryId = 1;
+    nextExpenseId = 1;
     store = {
       pet: { name: demoFamily.petName, species: demoFamily.species, inviteCode: 'BRU4K7' },
       parents: {
@@ -349,7 +413,10 @@
         p2: { id: 'p2', name: demoFamily.parents[1].name, nickname: demoFamily.parents[1].nickname, joined: true },
       },
       entries: [],
+      expenses: [],
     };
+    const seedExpense = (parentId, minutes, category, amountCents) => store.expenses.push({ id: nextExpenseId++, parentId, category, amountCents, spentAt: minutesAgo(minutes) });
+    seedExpense('p1', 4300, 'vet', 8050); seedExpense('p2', 2900, 'food', 3200); seedExpense('p1', 1450, 'toys', 1200);
     const seed = (parentId, minutes, kind, detail, photo) => store.entries.push({ id: nextEntryId++, parentId, kind, detail, photo: photo || null, occurredAt: minutesAgo(minutes) });
     seed('p1', 1760, 'food', 'all'); seed('p1', 1700, 'walk', 'long'); seed('p1', 1690, 'poo', 'good'); seed('p1', 1500, 'photo', null, scenePhoto(PHOTO_SCENES[1], demoFamily.species));
     seed('p1', 330, 'food', 'all'); seed('p1', 300, 'poo', 'good'); seed('p1', 298, 'pee', 'normal');
@@ -360,7 +427,8 @@
   // First launch: nothing exists yet, both phones start on the welcome screen.
   function seedFirstLaunch() {
     nextEntryId = 1;
-    store = { pet: null, parents: { p1: { id: 'p1', name: '', nickname: '', joined: false }, p2: { id: 'p2', name: '', nickname: '', joined: false } }, entries: [] };
+    nextExpenseId = 1;
+    store = { pet: null, parents: { p1: { id: 'p1', name: '', nickname: '', joined: false }, p2: { id: 'p2', name: '', nickname: '', joined: false } }, entries: [], expenses: [] };
     phones = { p1: makePhone(), p2: makePhone() };
     PHONE_IDS.forEach(phoneId => { phones[phoneId].onboarding = { step: 'welcome', error: '' }; });
   }
@@ -375,9 +443,10 @@
   const TAB_ICONS = {
     today: '<svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="6" cy="10.5" rx="2.1" ry="2.8"/><ellipse cx="10" cy="6.3" rx="2.1" ry="2.8"/><ellipse cx="14.4" cy="6.3" rx="2.1" ry="2.8"/><ellipse cx="18.3" cy="10.5" rx="2.1" ry="2.8"/><path d="M12.2 11.4c-3.1 0-5.7 3-5.7 5.5 0 1.7 1.3 2.6 2.9 2.6 1.1 0 1.8-.6 2.8-.6s1.7.6 2.8.6c1.6 0 2.9-.9 2.9-2.6 0-2.5-2.6-5.5-5.7-5.5z"/></svg>',
     photos: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill-rule="evenodd" d="M6 4h12a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3zm2.5 6a1.8 1.8 0 1 0 0-3.6 1.8 1.8 0 0 0 0 3.6zM5 16.5 9.2 12l3 3 2.4-2.4 4.4 4.4V17a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-.5z"/></svg>',
+    money: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><text x="12" y="16.4" text-anchor="middle" font-size="12.5" font-weight="800" font-family="system-ui, sans-serif" fill="var(--card)">€</text></svg>',
     family: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.5s-8-4.9-8-10.7A4.4 4.4 0 0 1 12 7.3a4.4 4.4 0 0 1 8 2.5c0 5.8-8 10.7-8 10.7z"/></svg>',
   };
-  const TAB_LABELS = { today: 'Today', photos: 'Photos', family: 'Family' };
+  const TAB_LABELS = { today: 'Today', photos: 'Photos', money: 'Money', family: 'Family' };
 
   function buildStage() {
     stageEl.innerHTML = PHONE_IDS.map(phoneId => `
@@ -420,7 +489,7 @@
     if (!parent.joined) {
       root.querySelector('.screen').innerHTML = renderOnboarding(phoneId);
     } else {
-      const screens = { today: renderToday, photos: renderPhotos, family: renderFamily };
+      const screens = { today: renderToday, photos: renderPhotos, money: renderMoney, family: renderFamily };
       root.querySelector('.screen').innerHTML = screens[phone.tab](phoneId);
       tabbar.innerHTML = Object.keys(TAB_LABELS).map(tab => `
         <button type="button" class="tab" data-action="open-tab" data-tab="${tab}" ${phone.tab === tab ? 'aria-current="page"' : ''}>
@@ -502,6 +571,45 @@
           </button>`).join('')}</div>`
       : `<div class="empty"><span class="e">📸</span>No photos yet. Send the first one from Today.</div>`;
     return `<h2 class="screen-title">${esc(store.pet.name)}'s photos</h2>${grid}`;
+  }
+
+  function renderExpense(expense, phoneId) {
+    const category = EXPENSE_CATEGORIES[expense.category], payer = store.parents[expense.parentId];
+    const who = expense.parentId === phoneId ? 'you' : esc(payer.name);
+    const verb = expense.category === 'settle_up' ? 'from' : 'paid by';
+    const pop = phones[phoneId].highlightExpenseId === expense.id ? ' pop' : '';
+    return `<div class="entry${pop}">
+      <span class="e" aria-hidden="true">${category.emoji}</span>
+      <span class="txt"><p class="msg">${category.label}</p><p class="meta">${verb} ${who} · ${expense.spentAt.toLocaleDateString([], { day: 'numeric', month: 'short' })}</p></span>
+      <span class="sum">${formatAmount(expense.amountCents)}</span></div>`;
+  }
+
+  function renderBalance(phoneId) {
+    const other = store.parents[otherPhoneId(phoneId)], balance = balanceCents(phoneId);
+    if (!other.joined) return `<div class="balance"><span class="e">🤝</span><p class="who">The balance shows up when the other parent joins.</p></div>`;
+    if (balance === 0) return `<div class="balance"><span class="e">🎉</span><p class="amount" style="font-size: 24px">All square</p><p class="who">Nobody owes anything.</p></div>`;
+    if (balance > 0) return `<div class="balance"><p class="who">${esc(other.name)} owes you</p><p class="amount">${formatAmount(balance)}</p></div>`;
+    return `<div class="balance"><p class="who">You owe ${esc(other.name)}</p><p class="amount">${formatAmount(-balance)}</p>
+      <button type="button" class="btn-primary" data-action="open-sheet" data-kind="settle-up">I paid ${esc(other.name)} back</button></div>`;
+  }
+
+  function renderMoney(phoneId) {
+    const petName = store.pet.name, spending = monthSpending();
+    const expenses = [...store.expenses].sort((a, b) => b.spentAt - a.spentAt);
+    const month = spending.length
+      ? `<div class="card">${spending.map(total => `
+          <div class="money-row"><span aria-hidden="true">${EXPENSE_CATEGORIES[total.category].emoji}</span><span class="grow">${EXPENSE_CATEGORIES[total.category].label}</span><span class="sum">${formatAmount(total.amountCents)}</span></div>`).join('')}
+          <div class="money-row total"><span aria-hidden="true">🧾</span><span class="grow">Total</span><span class="sum">${formatAmount(spending.reduce((sum, total) => sum + total.amountCents, 0))}</span></div></div>`
+      : `<div class="empty">Nothing spent on ${esc(petName)} this month yet.</div>`;
+    const list = expenses.length
+      ? `<div class="timeline">${expenses.map(expense => renderExpense(expense, phoneId)).join('')}</div>`
+      : `<div class="empty"><span class="e">💶</span>No expenses yet. Add the first thing you bought for ${esc(petName)}.</div>`;
+    return `
+      <h2 class="screen-title">${esc(petName)}'s money</h2>
+      ${renderBalance(phoneId)}
+      <button type="button" class="btn-primary" data-action="open-sheet" data-kind="expense">+ Add an expense</button>
+      <p class="section-label">This month</p>${month}
+      <p class="section-label">Everything</p>${list}`;
   }
 
   function renderFamily(phoneId) {
@@ -598,7 +706,29 @@
         <button type="button" data-action="close-overlay">Close</button></div>`;
     }
     if (!phone.sheet) return '';
-    const kind = ENTRY_KINDS[phone.sheet], petName = store.pet.name;
+    const petName = store.pet.name;
+    if (phone.sheet === 'expense') {
+      const draft = phone.expenseDraft || { amountText: '', category: null };
+      const categories = SPENDING_CATEGORIES.map(categoryId => `
+        <button type="button" class="kind" style="--tint: var(--brand)" data-action="pick-expense-category" data-category="${categoryId}" aria-pressed="${draft.category === categoryId}">
+          <span class="e" aria-hidden="true">${EXPENSE_CATEGORIES[categoryId].emoji}</span>${EXPENSE_CATEGORIES[categoryId].label}
+        </button>`).join('');
+      return `<div class="overlay" data-action="close-overlay"><form class="sheet" data-sheet data-form="expense">
+        <h3>What did you buy for ${esc(petName)}?</h3>
+        <label class="amount-field"><input id="${phoneId}-expense-amount" inputmode="decimal" autocomplete="off" placeholder="0.00" aria-label="Amount" value="${esc(draft.amountText)}"><span>${CURRENCY_CODE}</span></label>
+        <div class="kinds">${categories}</div>
+        <p class="error">${esc(draft.error || '')}</p>
+        <button type="submit" class="btn-primary">Save</button>
+        <button type="button" class="btn-cancel" data-action="close-overlay">Cancel</button></form></div>`;
+    }
+    if (phone.sheet === 'settle-up') {
+      const other = store.parents[otherPhoneId(phoneId)], amount = formatAmount(-balanceCents(phoneId));
+      return `<div class="overlay" data-action="close-overlay"><div class="sheet" data-sheet>
+        <h3>Did you pay ${esc(other.name)} back?</h3>
+        <button type="button" class="btn-primary" data-action="settle-up">Yes, I paid ${amount}</button>
+        <button type="button" class="btn-cancel" data-action="close-overlay">Cancel</button></div></div>`;
+    }
+    const kind = ENTRY_KINDS[phone.sheet];
     if (phone.sheet === 'photo') {
       const samples = PHOTO_SCENES.map(scene => `
         <button type="button" data-action="send-sample-photo" data-scene="${scene.id}"><img src="${scenePhoto(scene, store.pet.species)}" alt="Sample photo"></button>`).join('');
@@ -640,7 +770,7 @@
   }
 
   // Delivers a push notification to one phone; on narrow screens it also flags the hidden phone.
-  function notify(phoneId, title, body, entryId) {
+  function notify(phoneId, title, body, entryId, tab = 'today') {
     const phone = phones[phoneId], banner = deviceEl(phoneId).querySelector('.banner');
     console.log(`[push] to ${phoneId}: ${title} | ${body}`);
     banner.querySelector('.b-name').textContent = title;
@@ -648,7 +778,8 @@
     banner.classList.add('show');
     banner.tabIndex = 0;
     phone.bannerEntryId = entryId;
-    if (phone.tab !== 'today' && !phone.unread) {
+    phone.bannerTab = tab;
+    if (tab === 'today' && phone.tab !== 'today' && !phone.unread) {
       phone.unread = true;
       renderPhone(phoneId);
     }
@@ -689,6 +820,27 @@
       notify(receiverId, `${store.pet.name} ${SPECIES[store.pet.species].emoji}`, notificationBody(entry, receiver), entry.id);
     } else {
       showToast(phoneId, 'Saved in the diary ✓');
+    }
+  }
+
+  // Saves an expense or a payback, then tells the other parent in the pet's voice.
+  function addExpense(phoneId, category, amountCents) {
+    const payer = store.parents[phoneId], receiverId = otherPhoneId(phoneId), receiver = store.parents[receiverId];
+    const expense = { id: nextExpenseId++, parentId: phoneId, category, amountCents, spentAt: new Date() };
+    store.expenses.push(expense);
+    console.log(`[expenses] ${payer.name} added ${category}: ${formatAmount(amountCents)}`);
+    Object.assign(phones[phoneId], { sheet: null, expenseDraft: null });
+    PHONE_IDS.forEach(id => {
+      phones[id].highlightExpenseId = expense.id;
+      setTimeout(() => { if (phones[id] && phones[id].highlightExpenseId === expense.id) phones[id].highlightExpenseId = null; }, 1500);
+    });
+    renderAll();
+    if (receiver.joined) {
+      showToast(phoneId, `Sent to ${receiver.name} 💌`);
+      const line = EXPENSE_CATEGORIES[category].voiceLine(payer.name, formatAmount(amountCents));
+      notify(receiverId, `${store.pet.name} ${SPECIES[store.pet.species].emoji}`, `${receiver.nickname}, ${line}`, null, 'money');
+    } else {
+      showToast(phoneId, 'Saved ✓');
     }
   }
 
@@ -738,8 +890,22 @@
       phone.dayOffset = Math.max(-MAX_DAYS_BACK, Math.min(0, phone.dayOffset + Number(el.dataset.step)));
       renderPhone(phoneId);
     },
-    'open-sheet'(phoneId, el) { phones[phoneId].sheet = el.dataset.kind; renderPhone(phoneId); },
-    'close-overlay'(phoneId) { phones[phoneId].sheet = null; phones[phoneId].viewerEntryId = null; renderPhone(phoneId); },
+    'open-sheet'(phoneId, el) {
+      Object.assign(phones[phoneId], { sheet: el.dataset.kind, expenseDraft: null });
+      renderPhone(phoneId);
+      const amountField = deviceEl(phoneId).querySelector(`#${phoneId}-expense-amount`);
+      if (amountField) amountField.focus({ preventScroll: true });
+    },
+    'close-overlay'(phoneId) { Object.assign(phones[phoneId], { sheet: null, expenseDraft: null, viewerEntryId: null }); renderPhone(phoneId); },
+    'pick-expense-category'(phoneId, el) {
+      const amountText = deviceEl(phoneId).querySelector(`#${phoneId}-expense-amount`).value;
+      phones[phoneId].expenseDraft = { amountText, category: el.dataset.category };
+      renderPhone(phoneId);
+    },
+    'settle-up'(phoneId) {
+      const owedCents = -balanceCents(phoneId);
+      if (owedCents > 0) addExpense(phoneId, 'settle_up', owedCents);
+    },
     'log-entry'(phoneId, el) { logEntry(phoneId, el.dataset.kind, el.dataset.detail); },
     'send-sample-photo'(phoneId, el) {
       logEntry(phoneId, 'photo', null, scenePhoto(PHOTO_SCENES.find(scene => scene.id === el.dataset.scene), store.pet.species));
@@ -749,7 +915,8 @@
       const phone = phones[phoneId];
       hideBanner(phoneId);
       if (!store.parents[phoneId].joined) return;
-      Object.assign(phone, { tab: 'today', dayOffset: 0, unread: false, sheet: null, viewerEntryId: null, highlightEntryId: phone.bannerEntryId });
+      Object.assign(phone, { tab: phone.bannerTab, dayOffset: 0, sheet: null, viewerEntryId: null, highlightEntryId: phone.bannerEntryId });
+      if (phone.tab === 'today') phone.unread = false;
       renderPhone(phoneId);
       deviceEl(phoneId).querySelector('.screen').scrollTop = 0;
     },
@@ -804,6 +971,15 @@
       renderAll();
       showToast(phoneId, `You joined ${store.pet.name}'s family 🎉`);
       notify(otherPhoneId(phoneId), 'Brunello', `${store.parents[phoneId].name} joined ${store.pet.name}'s family 🎉`, null);
+    },
+    'expense'(phoneId, form) {
+      const phone = phones[phoneId], amountText = form.querySelector('input').value;
+      const amountCents = centsFromText(amountText), category = phone.expenseDraft && phone.expenseDraft.category;
+      if (amountCents === null || !category) {
+        phone.expenseDraft = { amountText, category, error: amountCents === null ? 'Type an amount, like 12.50.' : 'Choose what it was for.' };
+        return renderPhone(phoneId);
+      }
+      addExpense(phoneId, category, amountCents);
     },
     'pet-name'(phoneId, form) {
       const petName = form.querySelector('input').value.trim();

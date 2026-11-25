@@ -47,10 +47,11 @@ struct DiaryService: Sendable {
         return Family(pet: pet, me: me, otherParent: parents.first { $0.userID != userID })
     }
 
-    func createPet(name: String, species: Species, parentName: String, parentNickname: String) async throws {
+    func createPet(name: String, species: Species, currencyCode: String, parentName: String, parentNickname: String) async throws {
         try await callFamilyAction("create_pet", params: [
             "pet_name": name,
             "pet_species": species.rawValue,
+            "pet_currency_code": currencyCode,
             "parent_name": parentName,
             "parent_nickname": parentNickname,
         ])
@@ -64,9 +65,9 @@ struct DiaryService: Sendable {
         ])
     }
 
-    func updatePet(id: UUID, name: String, species: Species) async throws {
+    func updatePet(id: UUID, name: String, species: Species, currencyCode: String) async throws {
         try await client.from("pets")
-            .update(["name": name, "species": species.rawValue])
+            .update(["name": name, "species": species.rawValue, "currency_code": currencyCode])
             .eq("id", value: id)
             .execute()
     }
@@ -128,6 +129,32 @@ struct DiaryService: Sendable {
         }
     }
 
+    // MARK: - Money
+
+    /// The newest expenses first, up to `AppConfig.entriesLimit`.
+    func fetchExpenses(petID: UUID) async throws -> [Expense] {
+        try await client.from("expenses")
+            .select()
+            .eq("pet_id", value: petID)
+            .order("spent_at", ascending: false)
+            .limit(AppConfig.entriesLimit)
+            .execute()
+            .value
+    }
+
+    func addExpense(_ newExpense: NewExpense) async throws -> Expense {
+        try await client.from("expenses")
+            .insert(newExpense)
+            .select()
+            .single()
+            .execute()
+            .value
+    }
+
+    func deleteExpense(_ expense: Expense) async throws {
+        try await client.from("expenses").delete().eq("id", value: expense.id).execute()
+    }
+
     // MARK: - Photos
 
     /// Uploads a JPEG into the pet's folder and returns its path.
@@ -153,11 +180,17 @@ struct DiaryService: Sendable {
 
     /// Asks the server to tell the other parent about a new entry. A failed push never blocks the diary.
     func notifyParent(entryID: UUID) async {
+        await notifyParent(body: ["entry_id": entryID.uuidString.lowercased()])
+    }
+
+    /// Asks the server to tell the other parent about a new expense or payback.
+    func notifyParent(expenseID: UUID) async {
+        await notifyParent(body: ["expense_id": expenseID.uuidString.lowercased()])
+    }
+
+    private func notifyParent(body: [String: String]) async {
         do {
-            try await client.functions.invoke(
-                "notify-parent",
-                options: FunctionInvokeOptions(body: ["entry_id": entryID.uuidString.lowercased()])
-            )
+            try await client.functions.invoke("notify-parent", options: FunctionInvokeOptions(body: body))
         } catch {
             Logger.push.error("Could not notify the other parent: \(error.localizedDescription, privacy: .public)")
         }

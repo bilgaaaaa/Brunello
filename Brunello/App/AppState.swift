@@ -16,6 +16,7 @@ final class AppState {
     private(set) var phase: Phase = .loading
     private(set) var family: Family?
     private(set) var entries: [Entry] = []
+    private(set) var expenses: [Expense] = []
     private(set) var toast: Toast?
     private(set) var isSendingPhoto = false
 
@@ -55,15 +56,25 @@ final class AppState {
         guard let family = try await service.fetchFamily(userID: userID) else {
             self.family = nil
             entries = []
+            expenses = []
             phase = .onboarding
             return
         }
-        self.family = family
-        entries = try await service.fetchEntries(petID: family.pet.id)
+        try await loadDiary(for: family)
         phase = .ready
-        Logger.app.info("Family loaded with \(self.entries.count) entries")
+        Logger.app.info("Family loaded: \(self.entries.count) entries, \(self.expenses.count) expenses")
         startObservingChanges()
         await PushService.registerIfAuthorized()
+    }
+
+    /// Fetches the diary and the expenses together and shows them with the given family.
+    private func loadDiary(for family: Family) async throws {
+        async let loadedEntries = service.fetchEntries(petID: family.pet.id)
+        async let loadedExpenses = service.fetchExpenses(petID: family.pet.id)
+        let (newEntries, newExpenses) = try await (loadedEntries, loadedExpenses)
+        self.family = family
+        entries = newEntries
+        expenses = newExpenses
     }
 
     // MARK: - Onboarding
@@ -72,6 +83,7 @@ final class AppState {
         try await service.createPet(
             name: NameRules.clean(name),
             species: species,
+            currencyCode: Money.deviceCurrencyCode,
             parentName: NameRules.clean(parentName),
             parentNickname: NameRules.clean(parentNickname)
         )
@@ -109,9 +121,8 @@ final class AppState {
             isRefreshQueued = false
             do {
                 guard let family = try await service.fetchFamily(userID: userID) else { return }
-                self.family = family
-                entries = try await service.fetchEntries(petID: family.pet.id)
-                Logger.diary.debug("Diary refreshed: \(self.entries.count) entries")
+                try await loadDiary(for: family)
+                Logger.diary.debug("Refreshed: \(self.entries.count) entries, \(self.expenses.count) expenses")
             } catch {
                 Logger.diary.error("Refresh failed: \(error.localizedDescription, privacy: .public)")
             }
@@ -177,12 +188,54 @@ final class AppState {
         }
     }
 
+    // MARK: - Money
+
+    func addExpense(category: ExpenseCategory, amountCents: Int, spentAt: Date) async {
+        guard let family else { return }
+        let newExpense = NewExpense(petID: family.pet.id, parentID: family.me.id, category: category, amountCents: amountCents, spentAt: spentAt)
+        do {
+            let expense = try await service.addExpense(newExpense)
+            if !expenses.contains(where: { $0.id == expense.id }) {
+                expenses.append(expense)
+                expenses.sort { $0.spentAt > $1.spentAt }
+            }
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            Logger.diary.info("Expense saved: \(expense.category.rawValue, privacy: .public)")
+            if let otherParent = family.otherParent {
+                showToast("Sent to \(otherParent.name) 💌")
+                Task { await service.notifyParent(expenseID: expense.id) }
+            } else {
+                showToast("Saved ✓")
+            }
+        } catch {
+            Logger.diary.error("Saving an expense failed: \(error.localizedDescription, privacy: .public)")
+            showToast("Could not save. Check your connection.")
+        }
+    }
+
+    /// Records that I paid the other parent back.
+    func settleUp(amountCents: Int) async {
+        await addExpense(category: .settleUp, amountCents: amountCents, spentAt: .now)
+    }
+
+    func deleteExpense(_ expense: Expense) async {
+        do {
+            try await service.deleteExpense(expense)
+            expenses.removeAll { $0.id == expense.id }
+            Logger.diary.info("Expense deleted")
+            showToast("Removed")
+        } catch {
+            Logger.diary.error("Deleting an expense failed: \(error.localizedDescription, privacy: .public)")
+            showToast("Could not remove it. Check your connection.")
+        }
+    }
+
     // MARK: - Family settings
 
-    func updatePet(name: String, species: Species) async {
+    func updatePet(name: String, species: Species, currencyCode: String) async {
         guard let family else { return }
         do {
-            try await service.updatePet(id: family.pet.id, name: NameRules.clean(name), species: species)
+            try await service.updatePet(id: family.pet.id, name: NameRules.clean(name), species: species, currencyCode: currencyCode)
             await refresh()
             showToast("Saved ✓")
         } catch {

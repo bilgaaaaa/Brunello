@@ -46,7 +46,7 @@ struct RootView: View {
     }
 }
 
-/// The three tabs of the app.
+/// The four tabs of the app.
 struct MainTabView: View {
     let family: Family
 
@@ -56,6 +56,8 @@ struct MainTabView: View {
                 .tabItem { Label("Today", systemImage: "pawprint.fill") }
             PhotosView(family: family)
                 .tabItem { Label("Photos", systemImage: "photo.on.rectangle.angled") }
+            MoneyView(family: family)
+                .tabItem { Label("Money", systemImage: "eurosign.circle.fill") }
             FamilyView(family: family)
                 .tabItem { Label("Family", systemImage: "heart.fill") }
         }

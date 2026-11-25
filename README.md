@@ -1,6 +1,6 @@
 # Brunello 🐾
 
-A shared diary for two pet parents. Each parent taps what the pet did (food, poo, pee, a walk, a health note, a photo) and the other parent gets a notification written in the pet's own voice: *"Mama, I made a good poo! 💩✨"*.
+A shared diary for two pet parents. Each parent taps what the pet did (food, poo, pee, a walk, a health note, a photo) and the other parent gets a notification written in the pet's own voice: *"Mama, I made a good poo! 💩✨"*. It also keeps track of what each parent spends on the pet and who owes whom.
 
 There is no chat, on purpose. The app only carries the pet's updates.
 
@@ -10,7 +10,7 @@ There is no chat, on purpose. The app only carries the pet's updates.
 | --- | --- |
 | `Brunello/` | The iOS app (SwiftUI, iOS 17+) |
 | `Brunello.xcodeproj/` | The Xcode project; open this to run the app |
-| `supabase/migrations/` | The database: tables, access rules, invite codes |
+| `supabase/migrations/` | The database: tables, access rules, invite codes, expenses |
 | `supabase/functions/notify-parent/` | The server function that sends the push notification |
 | `simulation/` | A clickable two-phone demo of the app that runs in a browser |
 
@@ -21,6 +21,7 @@ There is no chat, on purpose. The app only carries the pet's updates.
 - **Two taps to log.** Tap a kind, tap how it went. The entry lands in both diaries and the other parent is notified.
 - **Day by day.** The Today tab counts meals, poos, pees and walks for the day and lets you step back through earlier days.
 - **Photos.** Photos go into the diary and into a shared album.
+- **Money.** Either parent adds an expense (amount and category). Every expense is shared half and half, the Money tab shows who owes whom, and the parent who owes can record paying it back.
 - **Dogs and cats.** Cats get a Play button where dogs have Walk.
 
 ## Running the app
@@ -56,5 +57,7 @@ The app, the database, the server function and the simulation use the same words
 | `kind` | `food`, `poo`, `pee`, `walk`, `play`, `health`, `photo` |
 | `detail` | How it went, for example `good`, `half`, `long` |
 | `voiceLine` | The sentence the pet says for an entry |
+| `expense` | Money a parent spent on the pet; has a `category` and `amountCents` |
+| `category` | `food`, `vet`, `medicine`, `grooming`, `toys`, `other`, or `settle_up` for paying the other parent back |
 
-The pet's sentences live in two places that must stay in step: `Brunello/Models/EntryKind.swift` (diary) and `supabase/functions/notify-parent/petVoice.ts` (notifications).
+The pet's sentences live in two places that must stay in step: `Brunello/Models/EntryKind.swift` (diary) and `supabase/functions/notify-parent/petVoice.ts` (notifications, including the ones about money).

@@ -6,11 +6,13 @@ struct Pet: Codable, Identifiable, Equatable, Sendable {
     var name: String
     var species: Species
     var photoPath: String?
+    var currencyCode: String
     let inviteCode: String
 
     enum CodingKeys: String, CodingKey {
         case id, name, species
         case photoPath = "photo_path"
+        case currencyCode = "currency_code"
         case inviteCode = "invite_code"
     }
 }

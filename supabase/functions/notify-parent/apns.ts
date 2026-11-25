@@ -13,7 +13,6 @@ export interface ApnsAlert {
   title: string;
   body: string;
   threadId: string;
-  entryId: string;
 }
 
 export interface ApnsResult {
@@ -80,7 +79,6 @@ export async function sendAlert(
     },
     body: JSON.stringify({
       aps: { alert: { title: alert.title, body: alert.body }, sound: "default", "thread-id": alert.threadId },
-      entry_id: alert.entryId,
     }),
   });
   const answer = await response.json().catch(() => ({}));
