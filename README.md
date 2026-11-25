@@ -27,24 +27,27 @@ There is no chat, on purpose. The app only carries the pet's updates.
 
 ## Running the app
 
-You need a Mac with Xcode 16.3 or newer.
+You need a Mac with Xcode 16.3 or newer. The app is already connected to its Supabase project (`Brunello/App/AppConfig.swift`), where the database and the notification function are installed.
 
-1. Create a Supabase project and run `supabase/migrations/20261125000000_brunello_schema.sql` in its SQL editor.
-2. In Supabase, open **Authentication > Sign In / Providers** and turn on **Allow anonymous sign-ins**. The app signs each phone in silently; access is controlled by the invite code.
-3. Deploy the function in `supabase/functions/notify-parent/` with JWT verification turned off (`supabase functions deploy notify-parent --no-verify-jwt`). The function checks the caller's session itself.
-4. Paste your project URL and anon key into `Brunello/App/AppConfig.swift`.
-5. Open `Brunello.xcodeproj`, pick an iPhone simulator and press Run.
+1. **One switch in Supabase.** Open the project in the Supabase dashboard, go to **Authentication > Sign In / Providers** and turn on **Allow anonymous sign-ins**. The app signs each phone in silently; who gets in is decided by the invite code.
+2. **Run it.** Open `Brunello.xcodeproj`, select the Brunello target, open **Signing & Capabilities** and choose your team. Pick an iPhone simulator or your phone and press Run.
 
-### Notifications on real phones
+### Notifications
 
-Push notifications and installing on two phones need the paid Apple Developer Program.
-
-1. In Xcode, select the Brunello target, open **Signing & Capabilities**, choose your team and change the bundle identifier to one of your own.
-2. In the Apple Developer site, create an **APNs key** (.p8 file) and note its Key ID and your Team ID.
-3. Add four secrets to the Supabase function: `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_BUNDLE_ID` and `APNS_PRIVATE_KEY` (the full text of the .p8 file).
-4. Send the app to the other parent with TestFlight.
+1. In the Apple Developer site, open **Certificates, Identifiers & Profiles > Keys**, create a key with **Apple Push Notifications service (APNs)** enabled and download the `.p8` file. Note its Key ID and your Team ID.
+2. In the Supabase dashboard, open **Edge Functions > Secrets** and add four secrets: `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_BUNDLE_ID` (the app's bundle identifier, `com.bilgaaaaa.brunello` unless you change it) and `APNS_PRIVATE_KEY` (the full text of the `.p8` file).
 
 Until those secrets are set the app works normally, just without notifications.
+
+### Sharing it through TestFlight
+
+1. In Xcode choose **Product > Archive**, then **Distribute App > TestFlight & App Store**.
+2. In App Store Connect, open the app's **TestFlight** tab and add the other parent as a tester with their Apple ID email.
+3. Both parents install the app from the TestFlight app. The first one adds the pet and sends the invite code; the second one joins with it.
+
+### Using your own Supabase project
+
+Run `supabase/migrations/20261125000000_brunello_schema.sql` in the project's SQL editor, deploy the function with `supabase functions deploy notify-parent --no-verify-jwt` (the function checks the caller's session itself), turn on anonymous sign-ins, and put the project's URL and publishable key in `Brunello/App/AppConfig.swift`.
 
 ## Naming used everywhere
 

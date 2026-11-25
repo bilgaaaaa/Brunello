@@ -10,12 +10,6 @@ struct RootView: View {
             switch appState.phase {
             case .loading:
                 StatusScreen(emoji: "🐾", title: "Fetching the diary", isLoading: true)
-            case .setupNeeded:
-                StatusScreen(
-                    emoji: "🛠️",
-                    title: "One step left",
-                    message: "Add your Supabase URL and key in AppConfig.swift, then run the app again."
-                )
             case .failed:
                 StatusScreen(
                     emoji: "📡",

@@ -7,7 +7,6 @@ import SwiftUI
 final class AppState {
     enum Phase: Equatable {
         case loading
-        case setupNeeded
         case failed
         case onboarding
         case ready
@@ -32,10 +31,6 @@ final class AppState {
 
     /// Signs in and loads the family; also used by the "Try again" button.
     func start() async {
-        guard AppConfig.isConfigured else {
-            phase = .setupNeeded
-            return
-        }
         phase = .loading
         startErrorDetail = nil
         do {
