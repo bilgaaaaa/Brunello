@@ -1,0 +1,14 @@
+# Xcode
+xcuserdata/
+DerivedData/
+build/
+*.xcuserstate
+.swiftpm/
+build.log
+
+# macOS
+.DS_Store
+
+# Supabase CLI
+supabase/.temp/
+supabase/.branches/

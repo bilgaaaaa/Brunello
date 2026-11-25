@@ -1,0 +1,50 @@
+name: iOS build
+
+# Compiles the app for the iOS Simulator on every change to the app or its project.
+on:
+  push:
+    paths:
+      - "Brunello/**"
+      - "Brunello.xcodeproj/**"
+      - ".github/workflows/ios-build.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ios-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select the latest stable Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Show the Xcode version
+        run: xcodebuild -version
+
+      - name: Build for the iOS Simulator
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project Brunello.xcodeproj \
+            -scheme Brunello \
+            -configuration Debug \
+            -destination "generic/platform=iOS Simulator" \
+            -skipMacroValidation \
+            -skipPackagePluginValidation \
+            CODE_SIGNING_ALLOWED=NO \
+            | tee build.log | grep -E "error:|warning: |BUILD SUCCEEDED|BUILD FAILED|Compiling|Resolve Package" | grep -v "SourcePackages/checkouts" || true
+          grep -q "BUILD SUCCEEDED" build.log
+
+      - name: Keep the build log when the build fails
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
