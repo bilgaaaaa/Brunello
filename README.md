@@ -22,7 +22,7 @@ There is no chat, on purpose. The app only carries the pet's updates.
 - **Two taps to log.** Tap a kind, tap how it went. The entry lands in both diaries and the other parent is notified.
 - **Day by day.** The Today tab counts meals, poos, pees and walks for the day and lets you step back through earlier days.
 - **Photos.** Photos go into the diary and into a shared album.
-- **Money.** Either parent adds an expense (amount and category). Every expense is shared half and half, the Money tab shows who owes whom, and the parent who owes can record paying it back.
+- **Money.** Either parent adds an expense (amount and category) and chooses how it is shared: half each, the other parent pays it all, not shared, or any other amount. The Money tab shows who owes whom, and the parent who owes can record paying it back.
 - **Dogs and cats.** Cats get a Play button where dogs have Walk.
 
 ## Running the app
@@ -58,7 +58,7 @@ The app, the database, the server function and the simulation use the same words
 | `kind` | `food`, `poo`, `pee`, `walk`, `play`, `health`, `photo` |
 | `detail` | How it went, for example `good`, `half`, `long` |
 | `voiceLine` | The sentence the pet says for an entry |
-| `expense` | Money a parent spent on the pet; has a `category` and `amountCents` |
+| `expense` | Money a parent spent on the pet; has a `category`, `amountCents` and `owedCents` (the part the other parent owes the payer) |
 | `category` | `food`, `vet`, `medicine`, `grooming`, `toys`, `other`, or `settle_up` for paying the other parent back |
 
 The pet's sentences live in two places that must stay in step: `Brunello/Models/EntryKind.swift` (diary) and `supabase/functions/notify-parent/petVoice.ts` (notifications, including the ones about money).

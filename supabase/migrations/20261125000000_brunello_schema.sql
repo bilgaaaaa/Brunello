@@ -52,18 +52,22 @@ create index entries_pet_id_occurred_at_idx on public.entries (pet_id, occurred_
 create index entries_parent_id_idx on public.entries (parent_id);
 create index parents_user_id_idx on public.parents (user_id);
 
--- Money spent on the pet. Every expense is shared half and half between the two parents;
--- a "settle_up" row is one parent paying the other back.
+-- Money spent on the pet, shared the way the payer chooses: "owed_cents" is the part of the amount
+-- the other parent owes the payer (half, all, nothing or anything in between).
+-- A "settle_up" row is one parent paying the other back, so all of it counts.
 create table public.expenses (
   id uuid primary key default gen_random_uuid(),
   pet_id uuid not null references public.pets (id) on delete cascade,
   parent_id uuid not null,
   category text not null check (category in ('food', 'vet', 'medicine', 'grooming', 'toys', 'other', 'settle_up')),
   amount_cents integer not null check (amount_cents between 1 and 10000000),
+  owed_cents integer not null,
   spent_at timestamptz not null default now(),
   created_at timestamptz not null default now(),
   -- The payer must be a parent of this same pet.
-  foreign key (parent_id, pet_id) references public.parents (id, pet_id) on delete cascade
+  foreign key (parent_id, pet_id) references public.parents (id, pet_id) on delete cascade,
+  constraint expenses_owed_cents_check check (owed_cents between 0 and amount_cents),
+  constraint expenses_settle_up_check check (category <> 'settle_up' or owed_cents = amount_cents)
 );
 
 create index expenses_pet_id_spent_at_idx on public.expenses (pet_id, spent_at desc);

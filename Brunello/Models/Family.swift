@@ -27,4 +27,17 @@ struct Family: Equatable, Sendable {
     func isMine(_ expense: Expense) -> Bool {
         expense.parentID == me.id
     }
+
+    /// Who owes what for one expense, for example "Marco owes €12.50"; nil for a payback.
+    func shareLabel(for expense: Expense) -> String? {
+        if expense.category == .settleUp { return nil }
+        if expense.owedCents == 0 { return "not shared" }
+        let owed = Money.format(cents: expense.owedCents, currencyCode: pet.currencyCode)
+        return isMine(expense) ? "\(otherParentName) owes \(owed)" : "you owe \(owed)"
+    }
+
+    /// The other parent's name, or a neutral stand-in until they join.
+    var otherParentName: String {
+        otherParent?.name ?? "The other parent"
+    }
 }

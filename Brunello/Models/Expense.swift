@@ -1,12 +1,13 @@
 import Foundation
 
-/// Money one parent spent on the pet. Every expense is shared half and half between the two parents.
+/// Money one parent spent on the pet. `owedCents` is the part the other parent owes the payer.
 struct Expense: Codable, Identifiable, Equatable, Sendable {
     let id: UUID
     let petID: UUID
     let parentID: UUID
     let category: ExpenseCategory
     let amountCents: Int
+    let owedCents: Int
     let spentAt: Date
 
     enum CodingKeys: String, CodingKey {
@@ -14,6 +15,7 @@ struct Expense: Codable, Identifiable, Equatable, Sendable {
         case petID = "pet_id"
         case parentID = "parent_id"
         case amountCents = "amount_cents"
+        case owedCents = "owed_cents"
         case spentAt = "spent_at"
     }
 }
@@ -24,6 +26,7 @@ struct NewExpense: Encodable, Sendable {
     let parentID: UUID
     let category: ExpenseCategory
     let amountCents: Int
+    let owedCents: Int
     var spentAt: Date = .now
 
     enum CodingKeys: String, CodingKey {
@@ -31,7 +34,34 @@ struct NewExpense: Encodable, Sendable {
         case petID = "pet_id"
         case parentID = "parent_id"
         case amountCents = "amount_cents"
+        case owedCents = "owed_cents"
         case spentAt = "spent_at"
+    }
+}
+
+/// How the payer shares an expense with the other parent.
+enum ExpenseSplit: String, CaseIterable, Identifiable, Sendable {
+    case half, otherPaysAll, notShared, custom
+
+    var id: String { rawValue }
+
+    func label(otherName: String) -> String {
+        switch self {
+        case .half: "Half each"
+        case .otherPaysAll: "\(otherName) pays it all"
+        case .notShared: "I pay it all"
+        case .custom: "Another amount"
+        }
+    }
+
+    /// The part the other parent owes for an expense of `amountCents`; nil while a custom part is missing or too big.
+    func owedCents(amountCents: Int, customOwedCents: Int?) -> Int? {
+        switch self {
+        case .half: amountCents / 2
+        case .otherPaysAll: amountCents
+        case .notShared: 0
+        case .custom: customOwedCents.flatMap { $0 <= amountCents ? $0 : nil }
+        }
     }
 }
 

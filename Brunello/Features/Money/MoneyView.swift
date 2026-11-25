@@ -20,6 +20,10 @@ struct MoneyView: View {
         Money.spending(in: appState.expenses, monthOf: .now)
     }
 
+    private var monthParts: (mine: Int, other: Int) {
+        Money.parts(in: appState.expenses, monthOf: .now, myParentID: family.me.id)
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
@@ -45,8 +49,8 @@ struct MoneyView: View {
         .background(Theme.background)
         .refreshable { await appState.refresh() }
         .sheet(isPresented: $isAddingExpense) {
-            ExpenseSheet(petName: family.pet.name, currencyCode: currencyCode) { category, amountCents, spentAt in
-                Task { await appState.addExpense(category: category, amountCents: amountCents, spentAt: spentAt) }
+            ExpenseSheet(petName: family.pet.name, otherParentName: family.otherParentName, currencyCode: currencyCode) { category, amountCents, owedCents, spentAt in
+                Task { await appState.addExpense(category: category, amountCents: amountCents, owedCents: owedCents, spentAt: spentAt) }
             }
         }
         .confirmationDialog(settleUpTitle, isPresented: $isConfirmingSettleUp, titleVisibility: .visible) {
@@ -118,6 +122,8 @@ struct MoneyView: View {
                 }
                 Divider()
                 moneyRow(emoji: "🧾", label: "Total", cents: monthSpending.reduce(0) { $0 + $1.amountCents }, isBold: true)
+                moneyRow(emoji: "💜", label: "Your part", cents: monthParts.mine, isBold: false)
+                moneyRow(emoji: "🧡", label: "\(family.otherParentName)'s part", cents: monthParts.other, isBold: false)
             }
             .card()
         }
@@ -149,7 +155,12 @@ struct MoneyView: View {
         } else {
             LazyVStack(spacing: 8) {
                 ForEach(appState.expenses) { expense in
-                    ExpenseRow(expense: expense, payerLabel: family.payerLabel(for: expense), currencyCode: currencyCode)
+                    ExpenseRow(
+                        expense: expense,
+                        payerLabel: family.payerLabel(for: expense),
+                        shareLabel: family.shareLabel(for: expense),
+                        currencyCode: currencyCode
+                    )
                         .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: Theme.cornerRadius, style: .continuous))
                         .contextMenu {
                             if family.isMine(expense) {
@@ -171,6 +182,7 @@ struct MoneyView: View {
 struct ExpenseRow: View {
     let expense: Expense
     let payerLabel: String
+    let shareLabel: String?
     let currencyCode: String
 
     private var detailLine: String {
@@ -194,10 +206,17 @@ struct ExpenseRow: View {
                     .foregroundStyle(Theme.inkSoft)
             }
             Spacer(minLength: 8)
-            Text(Money.format(cents: expense.amountCents, currencyCode: currencyCode))
-                .font(.subheadline.weight(.bold))
-                .monospacedDigit()
-                .foregroundStyle(Theme.ink)
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(Money.format(cents: expense.amountCents, currencyCode: currencyCode))
+                    .font(.subheadline.weight(.bold))
+                    .monospacedDigit()
+                    .foregroundStyle(Theme.ink)
+                if let shareLabel {
+                    Text(shareLabel)
+                        .font(.caption)
+                        .foregroundStyle(Theme.inkSoft)
+                }
+            }
         }
         .card(padding: 12)
         .accessibilityElement(children: .combine)

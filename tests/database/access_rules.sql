@@ -27,15 +27,15 @@ end $$;
 \set C '''cccccccc-0000-0000-0000-000000000003'''
 
 select pg_temp.try_as('', 'anon cannot create a pet', $$select public.create_pet('Bruno','dog','EUR','X','Y')$$, 'error:permission denied%');
-select pg_temp.try_as(:A, 'A creates Bruno', $$select public.create_pet(' Bruno ','dog','eur','Bilge','Mama')$$, 'ok:1');
-select pg_temp.try_as(:A, 'A cannot create a second pet', $$select public.create_pet('Rex','dog','EUR','Bilge','Mama')$$, 'error:already_in_family');
+select pg_temp.try_as(:A, 'A creates Bruno', $$select public.create_pet(' Bruno ','dog','eur','Sofia','Mama')$$, 'ok:1');
+select pg_temp.try_as(:A, 'A cannot create a second pet', $$select public.create_pet('Rex','dog','EUR','Sofia','Mama')$$, 'error:already_in_family');
 select pg_temp.try_as(:A, 'A sees exactly one pet', $q$do $do$ begin if (select count(*) from public.pets) <> 1 then raise exception 'count'; end if; end $do$$q$, 'ok:%');
 select pg_temp.try_as(:C, 'C sees no pets', $q$do $do$ begin if (select count(*) from public.pets) <> 0 then raise exception 'leak'; end if; end $do$$q$, 'ok:%');
-select pg_temp.try_as(:B, 'wrong code is rejected', $$select public.join_pet('ZZZZZZ','Luigi','Papà')$$, 'error:invite_not_found');
+select pg_temp.try_as(:B, 'wrong code is rejected', $$select public.join_pet('ZZZZZZ','Marco','Papà')$$, 'error:invite_not_found');
 
 select invite_code as code, id as pet_id from public.pets \gset
 select id as parent_a from public.parents where user_id = :A \gset
-select format($$select public.join_pet('%s-%s','Luigi','Papà')$$, lower(substr(:'code',1,3)), lower(substr(:'code',4,3))) as join_sql \gset
+select format($$select public.join_pet('%s-%s','Marco','Papà')$$, lower(substr(:'code',1,3)), lower(substr(:'code',4,3))) as join_sql \gset
 select pg_temp.try_as(:B, 'B joins with a lowercase dashed code', :'join_sql', 'ok:1');
 select pg_temp.try_as(:B, 'B joining again is harmless', :'join_sql', 'ok:1');
 select pg_temp.try_as(:C, 'C cannot join a full family', :'join_sql', 'error:family_full');
@@ -57,17 +57,21 @@ select pg_temp.try_as(:B, 'B cannot delete entries by A', format($$delete from p
 select pg_temp.try_as(:A, 'A deletes own entry', format($$delete from public.entries where parent_id = '%s' and kind = 'food'$$, :'parent_a'), 'ok:1');
 select pg_temp.try_as(:A, 'entries cannot be edited', $$update public.entries set detail = 'half'$$, 'error:permission denied%');
 
-select pg_temp.try_as(:A, 'A logs an expense', format($$insert into public.expenses (pet_id, parent_id, category, amount_cents) values ('%s','%s','vet',8050)$$, :'pet_id', :'parent_a'), 'ok:1');
-select pg_temp.try_as(:B, 'B pays A back', format($$insert into public.expenses (pet_id, parent_id, category, amount_cents) values ('%s','%s','settle_up',4025)$$, :'pet_id', :'parent_b'), 'ok:1');
-select pg_temp.try_as(:B, 'B cannot log an expense as A', format($$insert into public.expenses (pet_id, parent_id, category, amount_cents) values ('%s','%s','food',100)$$, :'pet_id', :'parent_a'), 'error:new row violates row-level security%');
-select pg_temp.try_as(:C, 'C cannot log an expense', format($$insert into public.expenses (pet_id, parent_id, category, amount_cents) values ('%s','%s','food',100)$$, :'pet_id', :'parent_a'), 'error:new row violates row-level security%');
-select pg_temp.try_as(:A, 'amounts must be positive', format($$insert into public.expenses (pet_id, parent_id, category, amount_cents) values ('%s','%s','food',0)$$, :'pet_id', :'parent_a'), 'error:%expenses_amount_cents_check%');
-select pg_temp.try_as(:A, 'categories are fixed', format($$insert into public.expenses (pet_id, parent_id, category, amount_cents) values ('%s','%s','party',100)$$, :'pet_id', :'parent_a'), 'error:%expenses_category_check%');
-select pg_temp.try_as(:B, 'B reads both expenses', $q$do $do$ begin if (select count(*) from public.expenses) <> 2 then raise exception 'count'; end if; end $do$$q$, 'ok:%');
+select pg_temp.try_as(:A, 'A logs an expense', format($$insert into public.expenses (pet_id, parent_id, category, amount_cents, owed_cents) values ('%s','%s','vet',8050,4025)$$, :'pet_id', :'parent_a'), 'ok:1');
+select pg_temp.try_as(:B, 'B pays A back', format($$insert into public.expenses (pet_id, parent_id, category, amount_cents, owed_cents) values ('%s','%s','settle_up',4025,4025)$$, :'pet_id', :'parent_b'), 'ok:1');
+select pg_temp.try_as(:B, 'B cannot log an expense as A', format($$insert into public.expenses (pet_id, parent_id, category, amount_cents, owed_cents) values ('%s','%s','food',100,50)$$, :'pet_id', :'parent_a'), 'error:new row violates row-level security%');
+select pg_temp.try_as(:C, 'C cannot log an expense', format($$insert into public.expenses (pet_id, parent_id, category, amount_cents, owed_cents) values ('%s','%s','food',100,50)$$, :'pet_id', :'parent_a'), 'error:new row violates row-level security%');
+select pg_temp.try_as(:A, 'amounts must be positive', format($$insert into public.expenses (pet_id, parent_id, category, amount_cents, owed_cents) values ('%s','%s','food',0,0)$$, :'pet_id', :'parent_a'), 'error:%expenses_amount_cents_check%');
+select pg_temp.try_as(:A, 'the other parent can owe all of it', format($$insert into public.expenses (pet_id, parent_id, category, amount_cents, owed_cents) values ('%s','%s','toys',900,900)$$, :'pet_id', :'parent_a'), 'ok:1');
+select pg_temp.try_as(:A, 'an expense can be unshared', format($$insert into public.expenses (pet_id, parent_id, category, amount_cents, owed_cents) values ('%s','%s','toys',900,0)$$, :'pet_id', :'parent_a'), 'ok:1');
+select pg_temp.try_as(:A, 'nobody can owe more than the amount', format($$insert into public.expenses (pet_id, parent_id, category, amount_cents, owed_cents) values ('%s','%s','food',100,101)$$, :'pet_id', :'parent_a'), 'error:%expenses_owed_cents_check%');
+select pg_temp.try_as(:A, 'a payback counts in full', format($$insert into public.expenses (pet_id, parent_id, category, amount_cents, owed_cents) values ('%s','%s','settle_up',100,50)$$, :'pet_id', :'parent_a'), 'error:%expenses_settle_up_check%');
+select pg_temp.try_as(:A, 'categories are fixed', format($$insert into public.expenses (pet_id, parent_id, category, amount_cents, owed_cents) values ('%s','%s','party',100,50)$$, :'pet_id', :'parent_a'), 'error:%expenses_category_check%');
+select pg_temp.try_as(:B, 'B reads every expense', $q$do $do$ begin if (select count(*) from public.expenses) <> 4 then raise exception 'count'; end if; end $do$$q$, 'ok:%');
 select pg_temp.try_as(:C, 'C reads no expenses', $q$do $do$ begin if (select count(*) from public.expenses) <> 0 then raise exception 'leak'; end if; end $do$$q$, 'ok:%');
 select pg_temp.try_as(:B, 'B cannot delete expenses by A', format($$delete from public.expenses where parent_id = '%s'$$, :'parent_a'), 'ok:0');
 select pg_temp.try_as(:A, 'expenses cannot be edited', $$update public.expenses set amount_cents = 1$$, 'error:permission denied%');
-select pg_temp.try_as(:A, 'A deletes own expense', format($$delete from public.expenses where parent_id = '%s'$$, :'parent_a'), 'ok:1');
+select pg_temp.try_as(:A, 'A deletes own expenses', format($$delete from public.expenses where parent_id = '%s'$$, :'parent_a'), 'ok:3');
 select pg_temp.try_as(:A, 'A changes the currency', $$update public.pets set currency_code = 'GBP'$$, 'ok:1');
 select pg_temp.try_as(:A, 'currency codes are three capital letters', $$update public.pets set currency_code = 'euro'$$, 'error:%pets_currency_code_check%');
 

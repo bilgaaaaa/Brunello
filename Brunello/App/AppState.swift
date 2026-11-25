@@ -194,9 +194,17 @@ final class AppState {
 
     // MARK: - Money
 
-    func addExpense(category: ExpenseCategory, amountCents: Int, spentAt: Date) async {
+    /// `owedCents` is the part of the amount the other parent owes me.
+    func addExpense(category: ExpenseCategory, amountCents: Int, owedCents: Int, spentAt: Date) async {
         guard let family else { return }
-        let newExpense = NewExpense(petID: family.pet.id, parentID: family.me.id, category: category, amountCents: amountCents, spentAt: spentAt)
+        let newExpense = NewExpense(
+            petID: family.pet.id,
+            parentID: family.me.id,
+            category: category,
+            amountCents: amountCents,
+            owedCents: owedCents,
+            spentAt: spentAt
+        )
         do {
             let expense = try await service.addExpense(newExpense)
             if !expenses.contains(where: { $0.id == expense.id }) {
@@ -219,7 +227,7 @@ final class AppState {
 
     /// Records that I paid the other parent back.
     func settleUp(amountCents: Int) async {
-        await addExpense(category: .settleUp, amountCents: amountCents, spentAt: .now)
+        await addExpense(category: .settleUp, amountCents: amountCents, owedCents: amountCents, spentAt: .now)
     }
 
     func deleteExpense(_ expense: Expense) async {

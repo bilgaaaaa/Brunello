@@ -63,10 +63,22 @@ export function formatAmount(amountCents: number, currencyCode: string): string 
   return new Intl.NumberFormat("en", { style: "currency", currency: currencyCode }).format(amountCents / 100);
 }
 
-/** The sentence the pet says about an expense, or null when the category is unknown. */
-export function expenseVoiceLine(category: string, payerName: string, amountCents: number, currencyCode: string): string | null {
+/**
+ * The sentence the pet says about an expense, or null when the category is unknown.
+ * `owedCents` is the part the receiving parent owes; it is mentioned when there is one.
+ */
+export function expenseVoiceLine(
+  category: string,
+  payerName: string,
+  amountCents: number,
+  owedCents: number,
+  currencyCode: string,
+): string | null {
   const line = EXPENSE_VOICE_LINES[category];
-  return line ? line(payerName, formatAmount(amountCents, currencyCode)) : null;
+  if (!line) return null;
+  const sentence = line(payerName, formatAmount(amountCents, currencyCode));
+  if (category === "settle_up" || owedCents === 0) return sentence;
+  return `${sentence} Your part is ${formatAmount(owedCents, currencyCode)}.`;
 }
 
 /** Notification title, for example "Bruno 🐶". */

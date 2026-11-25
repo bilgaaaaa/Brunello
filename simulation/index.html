@@ -153,7 +153,8 @@
   .money-row .grow { flex: 1; min-width: 0; }
   .money-row .sum { font-variant-numeric: tabular-nums; }
   .money-row.total { border-top: 1px solid var(--line); padding-top: 9px; font-weight: 800; font-size: 14.5px; }
-  .entry .sum { flex: none; font-weight: 800; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+  .entry .sum { flex: none; text-align: right; font-weight: 800; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+  .entry .sum small { display: block; font-weight: 600; font-size: 11px; color: var(--ink-soft); }
   .amount-field { display: flex; align-items: baseline; gap: 8px; background: var(--app-bg); border-radius: 18px; padding: 6px 14px; }
   .amount-field input { flex: 1; min-width: 0; border: 0; background: none; text-align: right; font-family: var(--font-display); font-weight: 700; font-size: 34px; padding: 0; }
   .amount-field input:focus { outline: none; }
@@ -194,8 +195,10 @@
   .code-field { text-align: center; font-family: var(--font-display); font-size: 24px; letter-spacing: .25em; text-transform: uppercase; }
 
   /* ---------- Overlays: sheet, photo viewer, toast, notification ---------- */
-  .overlay { position: absolute; inset: 0; z-index: 10; background: var(--scrim); display: flex; align-items: flex-end; animation: fade .2s ease-out; }
-  .sheet { width: 100%; background: var(--card); border-radius: 28px 28px 0 0; padding: 8px 16px 26px; display: flex; flex-direction: column; gap: 10px; animation: sheet-in .28s cubic-bezier(.2, .9, .3, 1); }
+  .overlay { position: absolute; inset: 0; z-index: 10; background: var(--scrim); display: flex; align-items: flex-end; }
+  .overlay.is-opening { animation: fade .2s ease-out; }
+  .sheet { width: 100%; max-height: 100%; overflow-y: auto; scrollbar-width: none; background: var(--card); border-radius: 28px 28px 0 0; padding: 8px 16px 26px; display: flex; flex-direction: column; gap: 10px; }
+  .overlay.is-opening .sheet { animation: sheet-in .28s cubic-bezier(.2, .9, .3, 1); }
   .sheet::before { content: ""; align-self: center; width: 38px; height: 5px; border-radius: 5px; background: var(--line); }
   .sheet h3 { margin: 4px 0 2px; font-family: var(--font-display); font-weight: 600; font-size: 19px; text-align: center; text-wrap: balance; }
   .option { --tint: var(--brand); display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; padding: 11px 14px; border-radius: 18px; background: color-mix(in srgb, var(--tint) 16%, var(--card)); font-weight: 800; font-size: 15px; transition: transform .12s ease; }
@@ -322,6 +325,13 @@
     settle_up: { emoji: '🤝', label: 'Paid back', voiceLine: (payerName, amount) => `${payerName} paid you back ${amount} 🤝` },
   };
   const SPENDING_CATEGORIES = ['food', 'vet', 'medicine', 'grooming', 'toys', 'other'];
+  // How the payer shares an expense: each choice gives the part the other parent owes (null when it does not fit).
+  const EXPENSE_SPLITS = {
+    half: { label: () => 'Half each', owedCents: amountCents => Math.floor(amountCents / 2) },
+    otherPaysAll: { label: otherName => `${otherName} pays it all`, owedCents: amountCents => amountCents },
+    notShared: { label: () => 'I pay it all', owedCents: () => 0 },
+    custom: { label: () => 'Another amount', owedCents: (amountCents, customOwedCents) => (customOwedCents !== null && customOwedCents <= amountCents ? customOwedCents : null) },
+  };
   const CURRENCY_CODE = 'EUR';
   const MAX_AMOUNT_CENTS = 10000000;
   const SUMMARY_KIND_COUNT = 4;
@@ -355,7 +365,7 @@
   const diaryMessage = entry => capitalize(voiceLine(entry));
   const notificationBody = (entry, receiver) => `${receiver.nickname}, ${voiceLine(entry)}`;
 
-  // ---------- Money: amounts are whole cents; every expense is shared half and half ----------
+  // ---------- Money: amounts are whole cents; each expense says which part the other parent owes ----------
   const formatAmount = cents => new Intl.NumberFormat('en', { style: 'currency', currency: CURRENCY_CODE }).format(cents / 100);
 
   // Reads what the person typed ("12", "12.5", "12,50") as cents; null when it is not a usable amount.
@@ -369,21 +379,27 @@
 
   // Positive: the other parent owes this parent. Negative: this parent owes them.
   function balanceCents(parentId) {
-    let doubledBalance = 0;
-    store.expenses.forEach(expense => {
-      const sign = expense.parentId === parentId ? 1 : -1;
-      const weight = expense.category === 'settle_up' ? 2 : 1;
-      doubledBalance += sign * weight * expense.amountCents;
+    return store.expenses.reduce((balance, expense) => balance + (expense.parentId === parentId ? expense.owedCents : -expense.owedCents), 0);
+  }
+
+  const isThisMonth = date => { const now = new Date(); return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth(); };
+
+  // What this parent ends up paying this month after sharing, and what the other parent does.
+  function monthParts(parentId) {
+    const parts = { mine: 0, other: 0 };
+    store.expenses.filter(expense => expense.category !== 'settle_up' && isThisMonth(expense.spentAt)).forEach(expense => {
+      const payerPart = expense.amountCents - expense.owedCents;
+      parts.mine += expense.parentId === parentId ? payerPart : expense.owedCents;
+      parts.other += expense.parentId === parentId ? expense.owedCents : payerPart;
     });
-    return Math.trunc(doubledBalance / 2);
+    return parts;
   }
 
   // This month's spending by category, largest first; paybacks are not spending.
   function monthSpending() {
-    const now = new Date(), totals = {};
+    const totals = {};
     store.expenses.forEach(expense => {
-      const sameMonth = expense.spentAt.getFullYear() === now.getFullYear() && expense.spentAt.getMonth() === now.getMonth();
-      if (expense.category !== 'settle_up' && sameMonth) totals[expense.category] = (totals[expense.category] || 0) + expense.amountCents;
+      if (expense.category !== 'settle_up' && isThisMonth(expense.spentAt)) totals[expense.category] = (totals[expense.category] || 0) + expense.amountCents;
     });
     return Object.entries(totals).map(([category, amountCents]) => ({ category, amountCents })).sort((a, b) => b.amountCents - a.amountCents);
   }
@@ -399,7 +415,7 @@
   }
 
   function makePhone() {
-    return { tab: 'today', dayOffset: 0, sheet: null, expenseDraft: null, viewerEntryId: null, onboarding: null, unread: false, highlightEntryId: null, highlightExpenseId: null, bannerEntryId: null, bannerTab: 'today', bannerTimer: null, toastTimer: null };
+    return { tab: 'today', dayOffset: 0, sheet: null, expenseDraft: null, isOverlayOpening: false, viewerEntryId: null, onboarding: null, unread: false, highlightEntryId: null, highlightExpenseId: null, bannerEntryId: null, bannerTab: 'today', bannerTimer: null, toastTimer: null };
   }
 
   // Filled demo: both parents joined and Bruno already had a busy day.
@@ -415,8 +431,8 @@
       entries: [],
       expenses: [],
     };
-    const seedExpense = (parentId, minutes, category, amountCents) => store.expenses.push({ id: nextExpenseId++, parentId, category, amountCents, spentAt: minutesAgo(minutes) });
-    seedExpense('p1', 4300, 'vet', 8050); seedExpense('p2', 2900, 'food', 3200); seedExpense('p1', 1450, 'toys', 1200);
+    const seedExpense = (parentId, minutes, category, amountCents, owedCents) => store.expenses.push({ id: nextExpenseId++, parentId, category, amountCents, owedCents, spentAt: minutesAgo(minutes) });
+    seedExpense('p1', 4300, 'vet', 8050, 4025); seedExpense('p2', 2900, 'food', 3200, 1600); seedExpense('p1', 1450, 'toys', 1200, 0);
     const seed = (parentId, minutes, kind, detail, photo) => store.entries.push({ id: nextEntryId++, parentId, kind, detail, photo: photo || null, occurredAt: minutesAgo(minutes) });
     seed('p1', 1760, 'food', 'all'); seed('p1', 1700, 'walk', 'long'); seed('p1', 1690, 'poo', 'good'); seed('p1', 1500, 'photo', null, scenePhoto(PHOTO_SCENES[1], demoFamily.species));
     seed('p1', 330, 'food', 'all'); seed('p1', 300, 'poo', 'good'); seed('p1', 298, 'pee', 'normal');
@@ -497,6 +513,7 @@
         </button>`).join('');
     }
     root.querySelector('.overlay-slot').innerHTML = renderOverlay(phoneId);
+    phone.isOverlayOpening = false;
   }
 
   function parentsLine(phoneId) {
@@ -578,10 +595,19 @@
     const who = expense.parentId === phoneId ? 'you' : esc(payer.name);
     const verb = expense.category === 'settle_up' ? 'from' : 'paid by';
     const pop = phones[phoneId].highlightExpenseId === expense.id ? ' pop' : '';
+    const share = shareLabel(expense, phoneId);
     return `<div class="entry${pop}">
       <span class="e" aria-hidden="true">${category.emoji}</span>
       <span class="txt"><p class="msg">${category.label}</p><p class="meta">${verb} ${who} · ${expense.spentAt.toLocaleDateString([], { day: 'numeric', month: 'short' })}</p></span>
-      <span class="sum">${formatAmount(expense.amountCents)}</span></div>`;
+      <span class="sum">${formatAmount(expense.amountCents)}${share ? `<small>${esc(share)}</small>` : ''}</span></div>`;
+  }
+
+  // Who owes what for one expense, seen from this phone; null for a payback.
+  function shareLabel(expense, phoneId) {
+    if (expense.category === 'settle_up') return null;
+    if (expense.owedCents === 0) return 'not shared';
+    const other = store.parents[otherPhoneId(phoneId)];
+    return expense.parentId === phoneId ? `${other.name || 'The other parent'} owes ${formatAmount(expense.owedCents)}` : `you owe ${formatAmount(expense.owedCents)}`;
   }
 
   function renderBalance(phoneId) {
@@ -594,12 +620,15 @@
   }
 
   function renderMoney(phoneId) {
-    const petName = store.pet.name, spending = monthSpending();
+    const petName = store.pet.name, spending = monthSpending(), parts = monthParts(phoneId);
+    const otherName = store.parents[otherPhoneId(phoneId)].name || 'The other parent';
     const expenses = [...store.expenses].sort((a, b) => b.spentAt - a.spentAt);
     const month = spending.length
       ? `<div class="card">${spending.map(total => `
           <div class="money-row"><span aria-hidden="true">${EXPENSE_CATEGORIES[total.category].emoji}</span><span class="grow">${EXPENSE_CATEGORIES[total.category].label}</span><span class="sum">${formatAmount(total.amountCents)}</span></div>`).join('')}
-          <div class="money-row total"><span aria-hidden="true">🧾</span><span class="grow">Total</span><span class="sum">${formatAmount(spending.reduce((sum, total) => sum + total.amountCents, 0))}</span></div></div>`
+          <div class="money-row total"><span aria-hidden="true">🧾</span><span class="grow">Total</span><span class="sum">${formatAmount(spending.reduce((sum, total) => sum + total.amountCents, 0))}</span></div>
+          <div class="money-row"><span aria-hidden="true">💜</span><span class="grow">Your part</span><span class="sum">${formatAmount(parts.mine)}</span></div>
+          <div class="money-row"><span aria-hidden="true">🧡</span><span class="grow">${esc(otherName)}'s part</span><span class="sum">${formatAmount(parts.other)}</span></div></div>`
       : `<div class="empty">Nothing spent on ${esc(petName)} this month yet.</div>`;
     const list = expenses.length
       ? `<div class="timeline">${expenses.map(expense => renderExpense(expense, phoneId)).join('')}</div>`
@@ -696,11 +725,11 @@
   }
 
   function renderOverlay(phoneId) {
-    const phone = phones[phoneId];
+    const phone = phones[phoneId], opening = phone.isOverlayOpening ? ' is-opening' : '';
     if (phone.viewerEntryId !== null) {
       const entry = store.entries.find(item => item.id === phone.viewerEntryId);
       const who = entry.parentId === phoneId ? 'you' : esc(store.parents[entry.parentId].name);
-      return `<div class="overlay viewer" data-action="close-overlay">
+      return `<div class="overlay viewer${opening}" data-action="close-overlay">
         <img src="${entry.photo}" alt="Photo of ${esc(store.pet.name)}">
         <p>${esc(diaryMessage(entry))}<small>${entry.occurredAt.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' })} at ${formatTime(entry.occurredAt)} · with ${who}</small></p>
         <button type="button" data-action="close-overlay">Close</button></div>`;
@@ -708,22 +737,30 @@
     if (!phone.sheet) return '';
     const petName = store.pet.name;
     if (phone.sheet === 'expense') {
-      const draft = phone.expenseDraft || { amountText: '', category: null };
+      const draft = phone.expenseDraft || { amountText: '', category: null, split: 'half', customOwedText: '' };
+      const otherName = store.parents[otherPhoneId(phoneId)].name || 'The other parent';
+      const splits = Object.entries(EXPENSE_SPLITS).map(([splitId, split]) => `
+        <button type="button" class="chip" data-action="pick-expense-split" data-split="${splitId}" aria-pressed="${draft.split === splitId}">${esc(split.label(otherName))}</button>`).join('');
+      const customField = draft.split === 'custom'
+        ? `<input class="field" id="${phoneId}-expense-owed" inputmode="decimal" autocomplete="off" placeholder="How much ${esc(otherName)} owes" aria-label="How much ${esc(otherName)} owes" value="${esc(draft.customOwedText)}">`
+        : '';
       const categories = SPENDING_CATEGORIES.map(categoryId => `
         <button type="button" class="kind" style="--tint: var(--brand)" data-action="pick-expense-category" data-category="${categoryId}" aria-pressed="${draft.category === categoryId}">
           <span class="e" aria-hidden="true">${EXPENSE_CATEGORIES[categoryId].emoji}</span>${EXPENSE_CATEGORIES[categoryId].label}
         </button>`).join('');
-      return `<div class="overlay" data-action="close-overlay"><form class="sheet" data-sheet data-form="expense">
+      return `<div class="overlay${opening}" data-action="close-overlay"><form class="sheet" data-sheet data-form="expense">
         <h3>What did you buy for ${esc(petName)}?</h3>
         <label class="amount-field"><input id="${phoneId}-expense-amount" inputmode="decimal" autocomplete="off" placeholder="0.00" aria-label="Amount" value="${esc(draft.amountText)}"><span>${CURRENCY_CODE}</span></label>
         <div class="kinds">${categories}</div>
+        <p class="section-label">How is it shared?</p>
+        <div class="chips">${splits}</div>${customField}
         <p class="error">${esc(draft.error || '')}</p>
         <button type="submit" class="btn-primary">Save</button>
         <button type="button" class="btn-cancel" data-action="close-overlay">Cancel</button></form></div>`;
     }
     if (phone.sheet === 'settle-up') {
       const other = store.parents[otherPhoneId(phoneId)], amount = formatAmount(-balanceCents(phoneId));
-      return `<div class="overlay" data-action="close-overlay"><div class="sheet" data-sheet>
+      return `<div class="overlay${opening}" data-action="close-overlay"><div class="sheet" data-sheet>
         <h3>Did you pay ${esc(other.name)} back?</h3>
         <button type="button" class="btn-primary" data-action="settle-up">Yes, I paid ${amount}</button>
         <button type="button" class="btn-cancel" data-action="close-overlay">Cancel</button></div></div>`;
@@ -732,7 +769,7 @@
     if (phone.sheet === 'photo') {
       const samples = PHOTO_SCENES.map(scene => `
         <button type="button" data-action="send-sample-photo" data-scene="${scene.id}"><img src="${scenePhoto(scene, store.pet.species)}" alt="Sample photo"></button>`).join('');
-      return `<div class="overlay" data-action="close-overlay"><div class="sheet" data-sheet>
+      return `<div class="overlay${opening}" data-action="close-overlay"><div class="sheet" data-sheet>
         <h3>${esc(kind.question(petName))}</h3>
         <div class="samples">${samples}</div>
         <p class="hint" style="text-align: center">Tap a sample, or use one of your own pictures.</p>
@@ -743,7 +780,7 @@
       <button type="button" class="option" style="--tint: var(--${phone.sheet})" data-action="log-entry" data-kind="${phone.sheet}" data-detail="${option.detail}">
         <span class="e" aria-hidden="true">${option.emoji}</span><span>${option.label}${option.hint ? `<small>${option.hint}</small>` : ''}</span>
       </button>`).join('');
-    return `<div class="overlay" data-action="close-overlay"><div class="sheet" data-sheet>
+    return `<div class="overlay${opening}" data-action="close-overlay"><div class="sheet" data-sheet>
       <h3>${esc(kind.question(petName))}</h3>${options}
       <button type="button" class="btn-cancel" data-action="close-overlay">Cancel</button></div></div>`;
   }
@@ -824,9 +861,9 @@
   }
 
   // Saves an expense or a payback, then tells the other parent in the pet's voice.
-  function addExpense(phoneId, category, amountCents) {
+  function addExpense(phoneId, category, amountCents, owedCents) {
     const payer = store.parents[phoneId], receiverId = otherPhoneId(phoneId), receiver = store.parents[receiverId];
-    const expense = { id: nextExpenseId++, parentId: phoneId, category, amountCents, spentAt: new Date() };
+    const expense = { id: nextExpenseId++, parentId: phoneId, category, amountCents, owedCents, spentAt: new Date() };
     store.expenses.push(expense);
     console.log(`[expenses] ${payer.name} added ${category}: ${formatAmount(amountCents)}`);
     Object.assign(phones[phoneId], { sheet: null, expenseDraft: null });
@@ -837,11 +874,19 @@
     renderAll();
     if (receiver.joined) {
       showToast(phoneId, `Sent to ${receiver.name} 💌`);
-      const line = EXPENSE_CATEGORIES[category].voiceLine(payer.name, formatAmount(amountCents));
+      const part = category !== 'settle_up' && owedCents > 0 ? ` Your part is ${formatAmount(owedCents)}.` : '';
+      const line = EXPENSE_CATEGORIES[category].voiceLine(payer.name, formatAmount(amountCents)) + part;
       notify(receiverId, `${store.pet.name} ${SPECIES[store.pet.species].emoji}`, `${receiver.nickname}, ${line}`, null, 'money');
     } else {
       showToast(phoneId, 'Saved ✓');
     }
+  }
+
+  // Keeps what was typed in the expense sheet, so choosing a category or a split does not wipe it.
+  function readExpenseDraft(phoneId) {
+    const root = deviceEl(phoneId), owedField = root.querySelector(`#${phoneId}-expense-owed`);
+    const previous = phones[phoneId].expenseDraft || { category: null, split: 'half', customOwedText: '' };
+    return { ...previous, error: '', amountText: root.querySelector(`#${phoneId}-expense-amount`).value, customOwedText: owedField ? owedField.value : previous.customOwedText };
   }
 
   // Shrinks a chosen picture so the demo stays light, then sends it as a photo entry.
@@ -891,26 +936,31 @@
       renderPhone(phoneId);
     },
     'open-sheet'(phoneId, el) {
-      Object.assign(phones[phoneId], { sheet: el.dataset.kind, expenseDraft: null });
+      Object.assign(phones[phoneId], { sheet: el.dataset.kind, expenseDraft: null, isOverlayOpening: true });
       renderPhone(phoneId);
       const amountField = deviceEl(phoneId).querySelector(`#${phoneId}-expense-amount`);
       if (amountField) amountField.focus({ preventScroll: true });
     },
     'close-overlay'(phoneId) { Object.assign(phones[phoneId], { sheet: null, expenseDraft: null, viewerEntryId: null }); renderPhone(phoneId); },
     'pick-expense-category'(phoneId, el) {
-      const amountText = deviceEl(phoneId).querySelector(`#${phoneId}-expense-amount`).value;
-      phones[phoneId].expenseDraft = { amountText, category: el.dataset.category };
+      phones[phoneId].expenseDraft = { ...readExpenseDraft(phoneId), category: el.dataset.category };
       renderPhone(phoneId);
     },
+    'pick-expense-split'(phoneId, el) {
+      phones[phoneId].expenseDraft = { ...readExpenseDraft(phoneId), split: el.dataset.split };
+      renderPhone(phoneId);
+      const owedField = deviceEl(phoneId).querySelector(`#${phoneId}-expense-owed`);
+      if (owedField) owedField.focus({ preventScroll: true });
+    },
     'settle-up'(phoneId) {
-      const owedCents = -balanceCents(phoneId);
-      if (owedCents > 0) addExpense(phoneId, 'settle_up', owedCents);
+      const debtCents = -balanceCents(phoneId);
+      if (debtCents > 0) addExpense(phoneId, 'settle_up', debtCents, debtCents);
     },
     'log-entry'(phoneId, el) { logEntry(phoneId, el.dataset.kind, el.dataset.detail); },
     'send-sample-photo'(phoneId, el) {
       logEntry(phoneId, 'photo', null, scenePhoto(PHOTO_SCENES.find(scene => scene.id === el.dataset.scene), store.pet.species));
     },
-    'open-photo'(phoneId, el) { phones[phoneId].viewerEntryId = Number(el.dataset.entry); renderPhone(phoneId); },
+    'open-photo'(phoneId, el) { Object.assign(phones[phoneId], { viewerEntryId: Number(el.dataset.entry), isOverlayOpening: true }); renderPhone(phoneId); },
     'open-banner'(phoneId) {
       const phone = phones[phoneId];
       hideBanner(phoneId);
@@ -972,14 +1022,18 @@
       showToast(phoneId, `You joined ${store.pet.name}'s family 🎉`);
       notify(otherPhoneId(phoneId), 'Brunello', `${store.parents[phoneId].name} joined ${store.pet.name}'s family 🎉`, null);
     },
-    'expense'(phoneId, form) {
-      const phone = phones[phoneId], amountText = form.querySelector('input').value;
-      const amountCents = centsFromText(amountText), category = phone.expenseDraft && phone.expenseDraft.category;
-      if (amountCents === null || !category) {
-        phone.expenseDraft = { amountText, category, error: amountCents === null ? 'Type an amount, like 12.50.' : 'Choose what it was for.' };
+    'expense'(phoneId) {
+      const phone = phones[phoneId], draft = readExpenseDraft(phoneId);
+      const amountCents = centsFromText(draft.amountText);
+      const owedCents = amountCents === null ? null : EXPENSE_SPLITS[draft.split].owedCents(amountCents, centsFromText(draft.customOwedText));
+      if (amountCents === null) draft.error = 'Type an amount, like 12.50.';
+      else if (!draft.category) draft.error = 'Choose what it was for.';
+      else if (owedCents === null) draft.error = `Type how much is owed, up to ${formatAmount(amountCents)}.`;
+      if (draft.error) {
+        phone.expenseDraft = draft;
         return renderPhone(phoneId);
       }
-      addExpense(phoneId, category, amountCents);
+      addExpense(phoneId, draft.category, amountCents, owedCents);
     },
     'pet-name'(phoneId, form) {
       const petName = form.querySelector('input').value.trim();

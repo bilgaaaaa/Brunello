@@ -55,12 +55,13 @@ async function loadNews(admin: SupabaseClient, body: Record<string, unknown>): P
   }
   if (typeof body.expense_id === "string") {
     const { data: expense } = await admin.from("expenses")
-      .select("pet_id, parent_id, category, amount_cents").eq("id", body.expense_id).maybeSingle();
+      .select("pet_id, parent_id, category, amount_cents, owed_cents").eq("id", body.expense_id).maybeSingle();
     if (!expense) return null;
     return {
       petId: expense.pet_id,
       parentId: expense.parent_id,
-      makeLine: (author, pet) => expenseVoiceLine(expense.category, author.name, expense.amount_cents, pet.currency_code),
+      makeLine: (author, pet) =>
+        expenseVoiceLine(expense.category, author.name, expense.amount_cents, expense.owed_cents, pet.currency_code),
     };
   }
   return null;

@@ -15,15 +15,27 @@ enum Money {
     static let commonCurrencyCodes = ["EUR", "USD", "GBP", "CHF", "TRY", "CAD", "AUD"]
 
     /// Positive: the other parent owes me this much. Negative: I owe them.
-    /// An expense counts for half (it is shared); a payback counts in full.
+    /// Each expense adds the part its payer is owed; a payback counts in full.
     static func balanceCents(expenses: [Expense], myParentID: UUID) -> Int {
-        var doubledBalance = 0
-        for expense in expenses {
-            let sign = expense.parentID == myParentID ? 1 : -1
-            let weight = expense.category == .settleUp ? 2 : 1
-            doubledBalance += sign * weight * expense.amountCents
+        expenses.reduce(0) { balance, expense in
+            balance + (expense.parentID == myParentID ? expense.owedCents : -expense.owedCents)
         }
-        return doubledBalance / 2
+    }
+
+    /// What I end up paying for the pet in the month of `date`, after sharing, and what the other parent does.
+    static func parts(in expenses: [Expense], monthOf date: Date, myParentID: UUID, calendar: Calendar = .current) -> (mine: Int, other: Int) {
+        var mine = 0, other = 0
+        for expense in expenses where expense.category != .settleUp && calendar.isDate(expense.spentAt, equalTo: date, toGranularity: .month) {
+            let payerPart = expense.amountCents - expense.owedCents
+            if expense.parentID == myParentID {
+                mine += payerPart
+                other += expense.owedCents
+            } else {
+                mine += expense.owedCents
+                other += payerPart
+            }
+        }
+        return (mine, other)
     }
 
     /// What both parents spent on the pet in the month of `date`, largest category first. Paybacks are not spending.
