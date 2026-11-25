@@ -1,0 +1,108 @@
+name: TestFlight
+
+# Builds the app for iPhone and uploads it to TestFlight.
+# Start it by hand: Actions tab > TestFlight > Run workflow.
+# The upload needs four repository secrets (see the README); without them the run stops after the build.
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: testflight
+  cancel-in-progress: false
+
+jobs:
+  testflight:
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+      APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Select the latest stable Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      # The archive is signed "to run locally" so no certificate is needed yet;
+      # the real App Store signature is added by Apple's cloud signing during the upload.
+      - name: Build the app for iPhone
+        run: |
+          set -o pipefail
+          BUILD_NUMBER=$(date -u +%Y%m%d%H%M)
+          echo "Build number: $BUILD_NUMBER"
+          xcodebuild archive \
+            -project Brunello.xcodeproj \
+            -scheme Brunello \
+            -configuration Release \
+            -destination "generic/platform=iOS" \
+            -archivePath "$RUNNER_TEMP/Brunello.xcarchive" \
+            -skipMacroValidation \
+            -skipPackagePluginValidation \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY=- \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES \
+            DEVELOPMENT_TEAM= \
+            PROVISIONING_PROFILE_SPECIFIER= \
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+            | tee archive.log | grep -E "error:|warning: |ARCHIVE SUCCEEDED|ARCHIVE FAILED" | grep -v "SourcePackages/checkouts" || true
+          grep -q "ARCHIVE SUCCEEDED" archive.log
+
+      - name: Check the push notification entitlement is in the build
+        run: |
+          APP="$RUNNER_TEMP/Brunello.xcarchive/Products/Applications/Brunello.app"
+          codesign -d --entitlements - --xml "$APP" > entitlements.xml
+          plutil -p entitlements.xml
+          grep -q "aps-environment" entitlements.xml
+
+      - name: Say what is missing for the upload
+        if: env.APP_STORE_CONNECT_KEY_ID == ''
+        run: echo "::warning::The iPhone build works, but the App Store Connect secrets are not set, so nothing was uploaded."
+
+      - name: Upload to TestFlight
+        if: env.APP_STORE_CONNECT_KEY_ID != ''
+        env:
+          APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+        run: |
+          set -o pipefail
+          printf '%s\n' "$APP_STORE_CONNECT_PRIVATE_KEY" > "$RUNNER_TEMP/AuthKey.p8"
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>teamID</key><string>$APPLE_TEAM_ID</string>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+            <key>uploadSymbols</key><true/>
+          </dict>
+          </plist>
+          EOF
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/Brunello.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/AuthKey.p8" \
+            -authenticationKeyID "$APP_STORE_CONNECT_KEY_ID" \
+            -authenticationKeyIssuerID "$APP_STORE_CONNECT_ISSUER_ID" \
+            | tee upload.log | grep -E "error:|warning: |Upload|EXPORT SUCCEEDED|EXPORT FAILED" || true
+          grep -q "EXPORT SUCCEEDED" upload.log
+
+      - name: Remove the key file
+        if: always()
+        run: rm -f "$RUNNER_TEMP/AuthKey.p8"
+
+      - name: Keep the logs when something fails
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: testflight-logs
+          path: |
+            archive.log
+            upload.log
+          if-no-files-found: ignore
