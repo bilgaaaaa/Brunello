@@ -101,6 +101,7 @@
   /* ---------- Today ---------- */
   .pet-header { display: flex; align-items: center; gap: 12px; }
   .avatar { flex: none; width: 54px; height: 54px; border-radius: 50%; display: grid; place-items: center; font-size: 30px; background: color-mix(in srgb, var(--brand) 16%, var(--card)); border: 3px solid var(--card); box-shadow: 0 4px 10px -4px var(--shadow); }
+  .avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; display: block; }
   .pet-name { margin: 0; font-family: var(--font-display); font-weight: 700; font-size: 24px; line-height: 1.1; overflow-wrap: anywhere; }
   .pet-sub { margin: 0; color: var(--ink-soft); font-size: 12.5px; }
 
@@ -343,6 +344,7 @@
   ];
   const PHONE_IDS = ['p1', 'p2'];
   // Sample family for the filled demo; a demo-family.json file next to the page can replace it.
+  // That file may also name real pictures published beside the page: "avatar" (one file) and "photos" (a list).
   let demoFamily = { petName: 'Bruno', species: 'dog', parents: [{ name: 'Sofia', nickname: 'Mama' }, { name: 'Marco', nickname: 'Papà' }] };
   const MAX_DAYS_BACK = 6;
   const narrowScreen = window.matchMedia('(max-width: 759px)');
@@ -409,6 +411,15 @@
     return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
   }
 
+  // The pictures offered in the photo sheet and used in the filled demo: the family's own when it has some, otherwise drawn ones.
+  function samplePhotos(species) {
+    if (demoFamily.photos && demoFamily.photos.length) return demoFamily.photos;
+    return PHOTO_SCENES.map(scene => scenePhoto(scene, species));
+  }
+
+  // Round picture of the pet: its own photo when there is one, otherwise the species emoji.
+  const petAvatar = pet => `<div class="avatar" aria-hidden="true">${pet.photo ? `<img src="${esc(pet.photo)}" alt="">` : SPECIES[pet.species].emoji}</div>`;
+
   function makeInviteCode() {
     const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
     return Array.from({ length: 6 }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join('');
@@ -423,7 +434,7 @@
     nextEntryId = 1;
     nextExpenseId = 1;
     store = {
-      pet: { name: demoFamily.petName, species: demoFamily.species, inviteCode: 'BRU4K7' },
+      pet: { name: demoFamily.petName, species: demoFamily.species, photo: demoFamily.avatar || null, inviteCode: 'BRU4K7' },
       parents: {
         p1: { id: 'p1', name: demoFamily.parents[0].name, nickname: demoFamily.parents[0].nickname, joined: true },
         p2: { id: 'p2', name: demoFamily.parents[1].name, nickname: demoFamily.parents[1].nickname, joined: true },
@@ -434,9 +445,12 @@
     const seedExpense = (parentId, minutes, category, amountCents, owedCents) => store.expenses.push({ id: nextExpenseId++, parentId, category, amountCents, owedCents, spentAt: minutesAgo(minutes) });
     seedExpense('p1', 4300, 'vet', 8050, 4025); seedExpense('p2', 2900, 'food', 3200, 1600); seedExpense('p1', 1450, 'toys', 1200, 0);
     const seed = (parentId, minutes, kind, detail, photo) => store.entries.push({ id: nextEntryId++, parentId, kind, detail, photo: photo || null, occurredAt: minutesAgo(minutes) });
-    seed('p1', 1760, 'food', 'all'); seed('p1', 1700, 'walk', 'long'); seed('p1', 1690, 'poo', 'good'); seed('p1', 1500, 'photo', null, scenePhoto(PHOTO_SCENES[1], demoFamily.species));
+    const photos = samplePhotos(demoFamily.species);
+    seed('p1', 1760, 'food', 'all'); seed('p1', 1700, 'walk', 'long'); seed('p1', 1690, 'poo', 'good'); seed('p1', 1500, 'photo', null, photos[1 % photos.length]);
     seed('p1', 330, 'food', 'all'); seed('p1', 300, 'poo', 'good'); seed('p1', 298, 'pee', 'normal');
-    seed('p2', 150, 'walk', 'medium'); seed('p2', 140, 'pee', 'normal'); seed('p2', 55, 'photo', null, scenePhoto(PHOTO_SCENES[0], demoFamily.species));
+    seed('p2', 150, 'walk', 'medium'); seed('p2', 140, 'pee', 'normal'); seed('p2', 55, 'photo', null, photos[0]);
+    // Any further pictures fill the album on earlier days, taken in turns by the two parents.
+    photos.slice(2).forEach((photo, index) => seed(index % 2 ? 'p2' : 'p1', 2950 + index * 1500, 'photo', null, photo));
     phones = { p1: makePhone(), p2: makePhone() };
   }
 
@@ -539,7 +553,7 @@
     const kind = ENTRY_KINDS[entry.kind], author = store.parents[entry.parentId];
     const who = entry.parentId === phoneId ? 'you' : esc(author.name);
     const pop = phones[phoneId].highlightEntryId === entry.id ? ' pop' : '';
-    const thumb = entry.photo ? `<img class="thumb" src="${entry.photo}" alt="Photo of ${esc(store.pet.name)}">` : '';
+    const thumb = entry.photo ? `<img class="thumb" src="${esc(entry.photo)}" alt="Photo of ${esc(store.pet.name)}">` : '';
     const body = `<span class="e" aria-hidden="true">${kind.emoji}</span>
       <span class="txt"><p class="msg">${esc(diaryMessage(entry))}</p><p class="meta">${formatTime(entry.occurredAt)} · with ${who}</p></span>${thumb}`;
     return entry.photo
@@ -563,7 +577,7 @@
       : `<div class="empty"><span class="e">${species.emoji}</span>Nothing in the diary for this day yet.</div>`;
     return `
       <div class="pet-header">
-        <div class="avatar" aria-hidden="true">${species.emoji}</div>
+        ${petAvatar(pet)}
         <div><h2 class="pet-name">${esc(pet.name)}</h2><p class="pet-sub">${parentsLine(phoneId)}</p></div>
       </div>
       ${store.parents[otherPhoneId(phoneId)].joined ? '' : renderInviteCard()}
@@ -584,7 +598,7 @@
     const grid = photos.length
       ? `<div class="photo-grid">${photos.map(entry => `
           <button type="button" data-action="open-photo" data-entry="${entry.id}">
-            <img src="${entry.photo}" alt="Photo of ${esc(store.pet.name)}"><span>${entry.occurredAt.toLocaleDateString([], { day: 'numeric', month: 'short' })}</span>
+            <img src="${esc(entry.photo)}" alt="Photo of ${esc(store.pet.name)}"><span>${entry.occurredAt.toLocaleDateString([], { day: 'numeric', month: 'short' })}</span>
           </button>`).join('')}</div>`
       : `<div class="empty"><span class="e">📸</span>No photos yet. Send the first one from Today.</div>`;
     return `<h2 class="screen-title">${esc(store.pet.name)}'s photos</h2>${grid}`;
@@ -653,7 +667,7 @@
     return `
       <h2 class="screen-title">Family</h2>
       <div class="card">
-        <div class="row"><div class="avatar" aria-hidden="true">${SPECIES[pet.species].emoji}</div>
+        <div class="row">${petAvatar(pet)}
           <form class="grow inline-form" data-form="pet-name"><input class="field" id="${phoneId}-pet-name" aria-label="Pet name" maxlength="20" value="${esc(pet.name)}"><button class="btn-small" type="submit">Save</button></form>
         </div>
         <div class="segmented" role="group" aria-label="Kind of pet">${speciesButtons}</div>
@@ -730,7 +744,7 @@
       const entry = store.entries.find(item => item.id === phone.viewerEntryId);
       const who = entry.parentId === phoneId ? 'you' : esc(store.parents[entry.parentId].name);
       return `<div class="overlay viewer${opening}" data-action="close-overlay">
-        <img src="${entry.photo}" alt="Photo of ${esc(store.pet.name)}">
+        <img src="${esc(entry.photo)}" alt="Photo of ${esc(store.pet.name)}">
         <p>${esc(diaryMessage(entry))}<small>${entry.occurredAt.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' })} at ${formatTime(entry.occurredAt)} · with ${who}</small></p>
         <button type="button" data-action="close-overlay">Close</button></div>`;
     }
@@ -767,12 +781,12 @@
     }
     const kind = ENTRY_KINDS[phone.sheet];
     if (phone.sheet === 'photo') {
-      const samples = PHOTO_SCENES.map(scene => `
-        <button type="button" data-action="send-sample-photo" data-scene="${scene.id}"><img src="${scenePhoto(scene, store.pet.species)}" alt="Sample photo"></button>`).join('');
+      const samples = samplePhotos(store.pet.species).slice(0, 6).map((photo, index) => `
+        <button type="button" data-action="send-sample-photo" data-photo="${index}"><img src="${esc(photo)}" alt="Photo ${index + 1}"></button>`).join('');
       return `<div class="overlay${opening}" data-action="close-overlay"><div class="sheet" data-sheet>
         <h3>${esc(kind.question(petName))}</h3>
         <div class="samples">${samples}</div>
-        <p class="hint" style="text-align: center">Tap a sample, or use one of your own pictures.</p>
+        <p class="hint" style="text-align: center">Tap a picture, or use one of your own.</p>
         <label class="option file-btn" style="--tint: var(--photo)"><span class="e" aria-hidden="true">🖼️</span><span>Choose from my photos</span><input type="file" accept="image/*" id="${phoneId}-photo-file" aria-label="Choose a photo"></label>
         <button type="button" class="btn-cancel" data-action="close-overlay">Cancel</button></div></div>`;
     }
@@ -958,7 +972,7 @@
     },
     'log-entry'(phoneId, el) { logEntry(phoneId, el.dataset.kind, el.dataset.detail); },
     'send-sample-photo'(phoneId, el) {
-      logEntry(phoneId, 'photo', null, scenePhoto(PHOTO_SCENES.find(scene => scene.id === el.dataset.scene), store.pet.species));
+      logEntry(phoneId, 'photo', null, samplePhotos(store.pet.species)[Number(el.dataset.photo)]);
     },
     'open-photo'(phoneId, el) { Object.assign(phones[phoneId], { viewerEntryId: Number(el.dataset.entry), isOverlayOpening: true }); renderPhone(phoneId); },
     'open-banner'(phoneId) {
